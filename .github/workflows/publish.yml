@@ -202,12 +202,12 @@ jobs:
             curl -H "Authorization: token ${{ secrets.TOKEN_N8N }}" \
                  -H "Accept: application/vnd.github.v3.raw" \
                  -o templates/n8n.conf.tpl \
-                 "https://api.github.com/repos/${{ github.repository }}/contents/templates/n8n.conf.tpl?ref=${{ github.sha }}"
+                 "https://api.github.com/repos/${{ github.repository }}/contents/nginx/n8n.conf.tpl?ref=${{ github.sha }}"
             
             curl -H "Authorization: token ${{ secrets.TOKEN_N8N }}" \
                  -H "Accept: application/vnd.github.v3.raw" \
                  -o templates/n8n-temp.conf.tpl \
-                 "https://api.github.com/repos/${{ github.repository }}/contents/templates/n8n-temp.conf.tpl?ref=${{ github.sha }}"
+                 "https://api.github.com/repos/${{ github.repository }}/contents/nginx/n8n-temp.conf.tpl?ref=${{ github.sha }}"
             
             # Configurar Nginx y SSL usando el script original
             echo "🔧 Configurando Nginx y SSL para $DOMAIN..."
