@@ -76,20 +76,6 @@ jobs:
           ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
           echo '${{ secrets.TOKEN_N8N }}' | docker login ghcr.io -u ${ACTOR_LOWER} --password-stdin
 
-      # Generar archivo .env desde secrets
-      - name: Generar archivo .env para N8N
-        run: |
-          echo '${{ secrets.ENV_FILE_CONTENT }}' > .env
-          
-          # Agregar configuraciones específicas del despliegue
-          echo "" >> .env
-          echo "# Configuración de despliegue automático" >> .env
-          echo "N8N_PORT=${{ steps.config_step.outputs.port }}" >> .env
-          echo "WEBHOOK_URL=https://${{ steps.config_step.outputs.domain }}/" >> .env
-          echo "N8N_EDITOR_BASE_URL=https://${{ steps.config_step.outputs.domain }}/" >> .env
-          
-          echo "✅ Archivo .env generado con configuración de despliegue"
-
       # Construir y subir imagen Docker
       - name: Construir y subir imagen Docker de N8N
         run: |
@@ -111,8 +97,6 @@ jobs:
           # Subir ambas tags
           docker push $IMAGE_FULL_TAG
           docker push $IMAGE_LATEST_TAG
-
-          echo "✅ Imágenes Docker subidas exitosamente"
 
           echo "✅ Imágenes Docker subidas exitosamente"
 
@@ -169,8 +153,6 @@ jobs:
           echo "host=$HOST" >> $GITHUB_OUTPUT
 
       - name: Desplegar en servidor VPS
-        env:
-          N8N_ENV_FILE: ${{ secrets.ENV_FILE_CONTENT }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ steps.ssh_credentials.outputs.host }}
@@ -305,10 +287,6 @@ jobs:
             chmod +x scripts/setup-nginx.sh
             ./scripts/setup-nginx.sh "$DOMAIN" "$PORT"
             
-            # Crear archivo .env a partir de la variable de entorno
-            echo "$N8N_ENV_FILE" > .env
-            echo "✅ Archivo .env generado para producción"
-            
             # Limpiar configuraciones antiguas de Nginx para evitar conflictos
             echo "🧹 Limpiando configuraciones antiguas de Nginx..."
             sudo rm -f /etc/nginx/sites-available/n8n
@@ -337,7 +315,23 @@ jobs:
               --name $CONTAINER_NAME \
               --restart unless-stopped \
               -p $PORT:8022 \
-              --env-file .env \
+              -e WEBHOOK_URL=https://$DOMAIN/ \
+              -e N8N_EDITOR_BASE_URL=https://$DOMAIN/ \
+              -e VUE_APP_URL_BASE_API=https://$DOMAIN/ \
+              -e N8N_HOST=n8n.autosystemprojects.site \
+              -e N8N_TRUST_PROXY=true \
+              -e N8N_PROTOCOL=https \
+              -e N8N_PORT=8022 \
+              -e GENERIC_TIMEZONE=America/Mexico_City \
+              -e DB_TYPE=sqlite \
+              -e N8N_USER_FOLDER=/home/n8n/.n8n \
+              -e DB_SQLITE_POOL_SIZE=10 \
+              -e N8N_SECURE_COOKIE=true \
+              -e N8N_ENCRYPTION_KEY=n8n-default-key-change-me \
+              -e N8N_LOG_LEVEL=info \
+              -e N8N_LOG_OUTPUT=file \
+              -e N8N_LOG_FILE_LOCATION=/app/logs/ \
+              -e N8N_RUNNERS_ENABLED=true \
               --health-cmd="curl -f http://localhost:8022/healthz || exit 1" \
               --health-interval=30s \
               --health-timeout=10s \
