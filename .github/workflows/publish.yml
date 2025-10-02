@@ -249,7 +249,7 @@ jobs:
 
             # Obtener o renovar certificado SSL
             echo "🔐 Obteniendo certificado SSL para $DOMAIN..."
-            sudo certbot certonly --webroot -w /var/www/html -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos -m $EMAIL --keep-until-expiring
+            sudo certbot certonly --webroot -w /var/www/html -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos -m $EMAIL --keep-until-expiring --expand
 
             # Eliminar configuración temporal
             sudo rm -f /etc/nginx/sites-enabled/n8n-temp
