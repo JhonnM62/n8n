@@ -14,6 +14,10 @@ on:
         required: false
         default: 'n8n.autosystemprojects.site'
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   DEFAULT_PORT: 8022
   DEFAULT_DOMAIN: n8n.autosystemprojects.site
@@ -70,8 +74,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ steps.repo_name_step.outputs.actor_lower }}
-          password: ${{ secrets.AUTH_PASS }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.TOKEN_N8N }}
 
       # Generar archivo .env desde secrets
       - name: Generar archivo .env para N8N
@@ -90,8 +94,8 @@ jobs:
       # Construir y subir imagen Docker
       - name: Construir y subir imagen Docker de N8N
         run: |
-          IMAGE_FULL_TAG="ghcr.io/${{ steps.repo_name_step.outputs.actor_lower }}/${{ steps.repo_name_step.outputs.name }}:${{ steps.config_step.outputs.image_tag }}"
-          IMAGE_LATEST_TAG="ghcr.io/${{ steps.repo_name_step.outputs.actor_lower }}/${{ steps.repo_name_step.outputs.name }}:latest"
+          IMAGE_FULL_TAG="ghcr.io/${{ github.actor }}/${{ github.event.repository.name }}:${{ steps.config_step.outputs.image_tag }}"
+          IMAGE_LATEST_TAG="ghcr.io/${{ github.actor }}/${{ github.event.repository.name }}:latest"
           
           echo "Building N8N image with tags:"
           echo "- Specific: $IMAGE_FULL_TAG"
@@ -166,7 +170,7 @@ jobs:
             DOMAIN="${{ steps.deploy_config.outputs.domain }}"
             CONTAINER_NAME="${{ steps.deploy_config.outputs.container_name }}"
             VOLUME_NAME="${{ steps.deploy_config.outputs.volume_name }}"
-            IMAGE_URL="ghcr.io/${{ steps.repo_names.outputs.actor_lower }}/${{ steps.repo_names.outputs.name }}:latest"
+            IMAGE_URL="ghcr.io/${{ github.actor }}/${{ github.event.repository.name }}:latest"
             
             echo "🚀 Iniciando despliegue de N8N..."
             echo "Puerto: $PORT"
@@ -320,7 +324,7 @@ jobs:
             echo "✅ Archivo .env configurado"
             
             # Login en GitHub Container Registry
-            echo '${{ secrets.AUTH_PASS }}' | docker login ghcr.io -u ${{ steps.repo_names.outputs.actor_lower }} --password-stdin
+            echo '${{ secrets.TOKEN_N8N }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Pull de la nueva imagen
             docker pull $IMAGE_URL
