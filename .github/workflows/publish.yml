@@ -309,17 +309,32 @@ jobs:
             # Corregir la ruta de la base de datos para que coincida con la nueva estructura
             sed -i 's|/home/n8n/.n8n/database.sqlite|/app/.n8n/database.sqlite|g' .env
             
-            # Agregar configuraciones específicas del despliegue
+            # Agregar/Forzar configuraciones correctas para el proxy inverso
             echo "" >> .env
-            echo "# Configuración de despliegue automático" >> .env
-            echo "N8N_PORT=$PORT" >> .env
-            echo "WEBHOOK_URL=https://$DOMAIN/" >> .env
-            echo "N8N_EDITOR_BASE_URL=https://$DOMAIN/" >> .env
-            echo "N8N_HOST=0.0.0.0" >> .env
+            echo "# Configuración de despliegue para proxy inverso" >> .env
+
+            # Eliminar configuraciones existentes para evitar duplicados y conflictos
+            sed -i '/^N8N_HOST/d' .env
+            sed -i '/^N8N_PROTOCOL/d' .env
+            sed -i '/^WEBHOOK_URL/d' .env
+            sed -i '/^N8N_EDITOR_BASE_URL/d' .env
+            sed -i '/^VUE_APP_URL_BASE_API/d' .env
+
+            # Agregar valores correctos para producción detrás de un proxy inverso
+            echo "N8N_HOST=$DOMAIN" >> .env
             echo "N8N_PROTOCOL=https" >> .env
+            echo "WEBHOOK_URL=https://$DOMAIN/webhook" >> .env
+            echo "VUE_APP_URL_BASE_API=https://$DOMAIN/" >> .env
+            echo "N8N_PORT=$PORT" >> .env
             echo "N8N_SECURE_COOKIE=true" >> .env
+
+            echo "✅ Archivo .env configurado para producción"
             
-            echo "✅ Archivo .env configurado"
+            # Limpiar configuraciones antiguas de Nginx para evitar conflictos
+            echo "🧹 Limpiando configuraciones antiguas de Nginx..."
+            sudo rm -f /etc/nginx/sites-available/n8n
+            sudo rm -f /etc/nginx/sites-enabled/n8n
+            echo "✅ Configuraciones antiguas eliminadas."
             
             # Login en GitHub Container Registry
             ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
