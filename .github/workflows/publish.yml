@@ -169,6 +169,8 @@ jobs:
           echo "host=$HOST" >> $GITHUB_OUTPUT
 
       - name: Desplegar en servidor VPS
+        env:
+          N8N_ENV_FILE: ${{ secrets.ENV_FILE_CONTENT }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ steps.ssh_credentials.outputs.host }}
@@ -303,10 +305,8 @@ jobs:
             chmod +x scripts/setup-nginx.sh
             ./scripts/setup-nginx.sh "$DOMAIN" "$PORT"
             
-            # Crear archivo .env a partir del secret de forma segura
-          cat << 'EOF' > .env
-${{ secrets.ENV_FILE_CONTENT }}
-EOF
+            # Crear archivo .env a partir de la variable de entorno
+            echo "$N8N_ENV_FILE" > .env
             echo "✅ Archivo .env generado para producción"
             
             # Limpiar configuraciones antiguas de Nginx para evitar conflictos
