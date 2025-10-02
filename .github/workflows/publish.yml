@@ -105,9 +105,9 @@ jobs:
     needs: create-docker-image
     runs-on: ubuntu-latest
     env:
-      N8N_DOMAIN: "n8n-user1.autosystemprojects.site"
-      N8N_PORT: "8024"
-      LETSENCRYPT_EMAIL: "admin-1@autosystemprojects.site"
+      N8N_DOMAIN: "n8n-useradmin.autosystemprojects.site"
+      N8N_PORT: "9500"
+      LETSENCRYPT_EMAIL: "admin-useradmin@autosystemprojects.site"
     
     steps:
       - name: Checkout código
@@ -216,12 +216,6 @@ jobs:
             export EMAIL="${{ env.LETSENCRYPT_EMAIL }}"
             chmod +x scripts/setup-nginx.sh
             ./scripts/setup-nginx.sh
-            
-            # Limpiar configuraciones antiguas de Nginx para evitar conflictos
-            echo "🧹 Limpiando configuraciones antiguas de Nginx..."
-            sudo rm -f /etc/nginx/sites-available/n8n
-            sudo rm -f /etc/nginx/sites-enabled/n8n
-            echo "✅ Configuraciones antiguas eliminadas."
             
             # Login en GitHub Container Registry
             ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
