@@ -215,52 +215,64 @@ jobs:
 
             DOMAIN=${1:-"n8n.autosystemprojects.site"}
             PORT=${2:-"8022"}
+            EMAIL="admin@autosystemprojects.site"
 
             echo "🚀 Configurando Nginx para N8N en $DOMAIN..."
 
             # Crear directorio para validación de Certbot
             echo "📁 Creando directorio para validación de Certbot..."
-            sudo mkdir -p /var/www/html
+            sudo mkdir -p /var/www/html/.well-known/acme-challenge
+            sudo chown -R www-data:www-data /var/www/html
 
-            # Configuración temporal de Nginx (sin SSL)
-            cat > /tmp/n8n-temp.conf << NGINX_TEMP
+            # Configuración temporal de Nginx para la validación de Certbot
+            echo "📝 Creando configuración temporal de Nginx para la validación de Certbot..."
+            cat > /etc/nginx/sites-available/n8n-temp << NGINX_TEMP
             server {
                 listen 80;
-                server_name autosystemprojects.site www.autosystemprojects.site n8n.autosystemprojects.site;
-                
-                # Permitir validación de Certbot para todos los dominios
+                server_name $DOMAIN;
+
                 location /.well-known/acme-challenge/ {
                     root /var/www/html;
                     try_files \$uri \$uri/ =404;
-                    allow all;
                 }
-                
-                # Redirigir todo el tráfico restante a la aplicación
+
                 location / {
-                    return 404; # No redirigir a la aplicación durante la validación
+                    return 404; # Bloquear otro tráfico durante la validación
                 }
             }
             NGINX_TEMP
 
-            # Configuración completa de Nginx (con SSL)
-            cat > /tmp/n8n.conf << NGINX_FULL
+            sudo ln -sf /etc/nginx/sites-available/n8n-temp /etc/nginx/sites-enabled/n8n-temp
+            sudo rm -f /etc/nginx/sites-enabled/default
+
+            # Probar y recargar Nginx
+            sudo nginx -t && sudo systemctl reload nginx
+
+            # Obtener o renovar certificado SSL
+            echo "🔐 Obteniendo certificado SSL para $DOMAIN..."
+            sudo certbot certonly --webroot -w /var/www/html -d $DOMAIN --non-interactive --agree-tos -m $EMAIL --keep-until-expiring
+
+            # Eliminar configuración temporal
+            sudo rm -f /etc/nginx/sites-enabled/n8n-temp
+
+            # Configuración completa de Nginx con SSL
+            echo "📝 Creando configuración completa de Nginx con SSL..."
+            cat > /etc/nginx/sites-available/$DOMAIN << NGINX_FULL
             server {
                 listen 80;
-                server_name autosystemprojects.site www.autosystemprojects.site n8n.autosystemprojects.site;
-                return 301 https://autosystemprojects.site\$request_uri;
+                server_name $DOMAIN;
+                return 301 https://\$host\$request_uri;
             }
 
             server {
                 listen 443 ssl http2;
-                server_name autosystemprojects.site www.autosystemprojects.site n8n.autosystemprojects.site;
+                server_name $DOMAIN;
 
-                ssl_certificate /etc/letsencrypt/live/autosystemprojects.site/fullchain.pem;
-                ssl_certificate_key /etc/letsencrypt/live/autosystemprojects.site/privkey.pem;
+                ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
                 
-                ssl_protocols TLSv1.2 TLSv1.3;
-                ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
-                ssl_prefer_server_ciphers off;
-                ssl_session_cache shared:SSL:10m;
+                include /etc/letsencrypt/options-ssl-nginx.conf;
+                ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
                 location / {
                     proxy_pass http://localhost:$PORT;
@@ -277,34 +289,16 @@ jobs:
             }
             NGINX_FULL
 
-            # Paso 1: Configurar permisos y aplicar configuración temporal
-            echo "📝 Configurando permisos y aplicando configuración temporal de Nginx..."
-            sudo chown -R www-data:www-data /var/www/html
-            sudo chmod -R 755 /var/www/html
-            sudo cp /tmp/n8n-temp.conf /etc/nginx/sites-available/n8n
-            sudo ln -sf /etc/nginx/sites-available/n8n /etc/nginx/sites-enabled/n8n
-            
-            # Remover configuración por defecto si existe
-            sudo rm -f /etc/nginx/sites-enabled/default
-            
-            # Probar y recargar configuración
-            sudo nginx -t && sudo systemctl reload nginx
+            sudo ln -sf /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/$DOMAIN
 
-            # Paso 2: Obtener certificados SSL
-            echo "🔐 Obteniendo certificados SSL con Certbot..."
-            # Simplificar a solo el dominio principal para evitar problemas de DNS
-            sudo certbot certonly --webroot --webroot-path=/var/www/html -d autosystemprojects.site --non-interactive --agree-tos --email admin@autosystemprojects.site
-
-            # Paso 3: Aplicar configuración completa con SSL
-            echo "🔒 Aplicando configuración completa de Nginx (con SSL)..."
-            sudo cp /tmp/n8n.conf /etc/nginx/sites-available/n8n
+            # Probar y recargar Nginx
             sudo nginx -t && sudo systemctl reload nginx
 
             # Configurar renovación automática
             echo "⏰ Configurando renovación automática de certificados..."
-            (sudo crontab -l 2>/dev/null; echo "0 12 * * * /usr/bin/certbot renew --quiet && /usr/bin/systemctl reload nginx") | sudo crontab -
+            (sudo crontab -l 2>/dev/null | grep -v "certbot renew"; echo "0 12 * * * /usr/bin/certbot renew --quiet && /usr/bin/systemctl reload nginx") | sudo crontab -
 
-            echo "✅ Configuración de Nginx y SSL completada exitosamente"
+            echo "✅ Configuración de Nginx y SSL completada para $DOMAIN"
             EOF
             
             # Configurar Nginx y SSL usando el script optimizado
