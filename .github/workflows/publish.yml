@@ -310,7 +310,7 @@ jobs:
             fi
             
             # Ejecutar nuevo contenedor
-            echo "🚀 Iniciando nuevo contenedor N8N..."
+            echo "🚀 Iniciando nuevo contenedor N8N...."
             docker run -d \
               --name $CONTAINER_NAME \
               --restart unless-stopped \
