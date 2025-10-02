@@ -1,26 +1,127 @@
-# Configuración de n8n para APIS_v2.3
+# n8n Automation Platform
 
-## Descripción
-n8n es una herramienta de automatización de flujos de trabajo que permite conectar diferentes servicios y APIs de manera visual. Esta instalación está configurada localmente para integrarse con el proyecto APIS_v2.3.
+Este es un despliegue personalizado de n8n con pipeline automatizado de CI/CD para `n8n.autosystemprojects.site`.
 
-## Requisitos del Sistema
-- **Node.js**: Versión 20.19 - 24.x (Actualmente instalado: v22.20.0)
-- **npm**: Versión 9.x o superior (Actualmente instalado: v9.7.2)
-- **Sistema Operativo**: Windows 10/11
+## 🚀 Características
 
-## Instalación Local Realizada
+- **Despliegue automatizado** con GitHub Actions
+- **Contenedorización Docker** optimizada
+- **Proxy inverso NGINX** con SSL automático
+- **Scripts de despliegue flexibles**
+- **Configuración de seguridad** avanzada
+- **Monitoreo de salud** integrado
 
-### 1. Verificación de Compatibilidad
+## 📋 Requisitos Previos
+
+- Servidor con Docker instalado
+- Dominio configurado (`n8n.autosystemprojects.site`)
+- Acceso SSH al servidor
+- GitHub Container Registry configurado
+
+## 🛠️ Configuración Inicial
+
+### 1. Variables de Entorno
+
+Crea un archivo `.env` basado en `.env.example`:
+
 ```bash
-node --version  # v22.20.0 ✅
-npm --version   # v9.7.2 ✅
+# Configuración del servidor
+N8N_HOST=0.0.0.0
+N8N_PORT=5678
+N8N_PROTOCOL=https
+N8N_SECURE_COOKIE=true
+
+# Base de datos
+DB_TYPE=sqlite
+N8N_DATABASE_SQLITE_DATABASE=/app/data/database.sqlite
+
+# Logs
+N8N_LOG_LEVEL=info
+N8N_LOG_OUTPUT=file
+N8N_LOG_FILE_LOCATION=/app/logs/n8n.log
+
+# Configuración de dominio
+WEBHOOK_URL=https://n8n.autosystemprojects.site
+N8N_EDITOR_BASE_URL=https://n8n.autosystemprojects.site
 ```
 
-### 2. Instalación Local (No Global)
+### 2. Secretos de GitHub
+
+Configura los siguientes secretos en tu repositorio de GitHub:
+
+- `TOKEN_N8N`: Token de acceso a GitHub Container Registry
+- `SSH_HOST`: IP del servidor de destino
+- `SSH_USERNAME`: Usuario SSH
+- `SSH_PRIVATE_KEY`: Clave privada SSH
+- `SSH_PORT`: Puerto SSH (por defecto 22)
+
+## 🔄 Pipeline de CI/CD
+
+### Flujo de Trabajo Automatizado
+
+El pipeline se activa automáticamente en:
+- Push a ramas: `main`, `master`, `develop`
+- Ejecución manual con parámetros personalizables
+
+### Trabajos del Pipeline
+
+#### 1. **create-docker-image**
+```yaml
+- Construye la imagen Docker
+- Sube a GitHub Container Registry (ghcr.io)
+- Etiqueta con SHA del commit
+```
+
+#### 2. **deploy**
+```yaml
+- Conecta al servidor vía SSH
+- Descarga la nueva imagen
+- Detiene el contenedor anterior
+- Despliega el nuevo contenedor
+- Configura NGINX y SSL
+- Verifica el estado del servicio
+```
+
+### Configuración del Workflow
+
+El archivo `.github/workflows/deploy.yml` permite personalización:
+
+```yaml
+inputs:
+  domain:
+    description: 'Dominio para n8n'
+    default: 'n8n.autosystemprojects.site'
+  internal_port:
+    description: 'Puerto interno del contenedor'
+    default: '5678'
+  external_port:
+    description: 'Puerto externo del contenedor'
+    default: '8017'
+```
+
+## 🐳 Docker
+
+### Dockerfile Optimizado
+
+- **Imagen base**: Node.js 20 Alpine
+- **Usuario no-root**: Seguridad mejorada
+- **Volúmenes persistentes**: Datos y logs
+- **Variables de entorno**: Configuración flexible
+
+### Construcción Local
+
 ```bash
-cd C:\APIS_v2.3\n8n
-npm init -y
-npm install n8n
+# Construir imagen
+docker build -t n8n-custom .
+
+# Ejecutar contenedor
+docker run -d \
+  --name n8n \
+  -p 8017:5678 \
+  -v n8n_data:/app/data \
+  -v n8n_logs:/app/logs \
+  --env-file .env \
+  n8n-custom
 ```
 
 ### 3. Estructura de Archivos
