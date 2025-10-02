@@ -226,14 +226,25 @@ jobs:
             cat > /tmp/n8n-temp.conf << 'NGINX_TEMP'
             server {
                 listen 80;
-                server_name $DOMAIN;
+                server_name autosystemprojects.site www.autosystemprojects.site n8n.autosystemprojects.site;
                 
+                # Permitir validación de Certbot para todos los dominios
                 location /.well-known/acme-challenge/ {
                     root /var/www/html;
+                    try_files $uri $uri/ =404;
+                    allow all;
                 }
                 
+                # Redirigir todo el tráfico restante a HTTPS después de la validación
                 location / {
-                    return 301 https://$server_name$request_uri;
+                    proxy_pass http://localhost:$PORT;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
                 }
             }
             NGINX_TEMP
@@ -242,16 +253,16 @@ jobs:
             cat > /tmp/n8n.conf << 'NGINX_FULL'
             server {
                 listen 80;
-                server_name $DOMAIN;
-                return 301 https://$server_name$request_uri;
+                server_name autosystemprojects.site www.autosystemprojects.site n8n.autosystemprojects.site;
+                return 301 https://autosystemprojects.site$request_uri;
             }
 
             server {
                 listen 443 ssl http2;
-                server_name $DOMAIN;
+                server_name autosystemprojects.site www.autosystemprojects.site n8n.autosystemprojects.site;
 
-                ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-                ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+                ssl_certificate /etc/letsencrypt/live/autosystemprojects.site/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/autosystemprojects.site/privkey.pem;
                 
                 ssl_protocols TLSv1.2 TLSv1.3;
                 ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
@@ -281,8 +292,8 @@ jobs:
 
             # Paso 2: Obtener certificados SSL
             echo "🔐 Obteniendo certificados SSL con Certbot..."
-            # Usar el dominio principal para la validación ya que el DNS redirige las solicitudes
-            sudo certbot certonly --webroot --webroot-path=/var/www/html -d autosystemprojects.site -d www.autosystemprojects.site -d $DOMAIN --non-interactive --agree-tos --email admin@autosystemprojects.site
+            # Simplificar a solo el dominio principal para evitar problemas de DNS
+            sudo certbot certonly --webroot --webroot-path=/var/www/html -d autosystemprojects.site --non-interactive --agree-tos --email admin@autosystemprojects.site
 
             # Paso 3: Aplicar configuración completa con SSL
             echo "🔒 Aplicando configuración completa de Nginx (con SSL)..."
