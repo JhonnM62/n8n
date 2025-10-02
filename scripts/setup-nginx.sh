@@ -1,143 +1,116 @@
 #!/bin/bash
 
 # Script para configurar Nginx y SSL para N8N
-# Dominio: n8n.autosystemprojects.site
+# Uso:
+#   - DOMAIN=your.domain.com PORT=8022 ./setup-nginx.sh
+#   - Si no se proporcionan, se usarán valores por defecto.
 
 set -e
 
-DOMAIN="n8n.autosystemprojects.site"
+# 1. Configuración de variables
+# Usar variables de entorno si están definidas, de lo contrario, usar valores por defecto.
+DOMAIN="${DOMAIN:-n8n.autosystemprojects.site}"
+PORT="${PORT:-8022}"
+EMAIL="${EMAIL:-admin@autosystemprojects.site}" # Email para notificaciones de Let's Encrypt
+
 NGINX_CONF_PATH="/etc/nginx/sites-available/n8n"
 NGINX_ENABLED_PATH="/etc/nginx/sites-enabled/n8n"
-PROJECT_NGINX_CONF="./nginx/n8n.conf"
-PROJECT_NGINX_TEMP_CONF="./nginx/n8n-temp.conf"
+PROJECT_NGINX_TEMP_CONF_TPL="./nginx/n8n-temp.conf.tpl"
+PROJECT_NGINX_CONF_TPL="./nginx/n8n.conf.tpl"
+GENERATED_TEMP_CONF="./nginx/n8n-temp.conf"
+GENERATED_CONF="./nginx/n8n.conf"
 
-echo "🚀 Configurando Nginx para N8N en $DOMAIN..."
+echo "🚀 Configurando Nginx para N8N en $DOMAIN en el puerto $PORT..."
 
-# Verificar si los archivos de configuración existen
-if [ ! -f "$PROJECT_NGINX_CONF" ]; then
-    echo "❌ Error: No se encuentra el archivo de configuración $PROJECT_NGINX_CONF"
+# 2. Validaciones previas
+# Verificar si las plantillas de configuración existen
+if [ ! -f "$PROJECT_NGINX_CONF_TPL" ] || [ ! -f "$PROJECT_NGINX_TEMP_CONF_TPL" ]; then
+    echo "❌ Error: No se encuentran los archivos de plantilla .tpl"
     exit 1
 fi
 
-if [ ! -f "$PROJECT_NGINX_TEMP_CONF" ]; then
-    echo "❌ Error: No se encuentra el archivo de configuración temporal $PROJECT_NGINX_TEMP_CONF"
+# Verificar si Nginx y Certbot están instalados
+if ! command -v nginx &> /dev/null || ! command -v certbot &> /dev/null; then
+    echo "❌ Error: Nginx o Certbot no están instalados."
     exit 1
 fi
 
-# Verificar si Nginx está instalado
-if ! command -v nginx &> /dev/null; then
-    echo "❌ Error: Nginx no está instalado"
-    exit 1
-fi
+# 3. Generar configuraciones a partir de plantillas
+echo "📝 Generando archivos de configuración a partir de plantillas..."
+sed "s/__DOMAIN__/$DOMAIN/g; s/__PORT__/$PORT/g" "$PROJECT_NGINX_TEMP_CONF_TPL" > "$GENERATED_TEMP_CONF"
+sed "s/__DOMAIN__/$DOMAIN/g; s/__PORT__/$PORT/g" "$PROJECT_NGINX_CONF_TPL" > "$GENERATED_CONF"
+echo "✅ Archivos de configuración generados."
 
-# Verificar si Certbot está instalado
-if ! command -v certbot &> /dev/null; then
-    echo "❌ Error: Certbot no está instalado"
-    exit 1
-fi
-
+# 4. Configuración de Nginx y SSL
 # Crear directorio para validación de Certbot
-echo "📁 Creando directorio para validación de Certbot..."
 sudo mkdir -p /var/www/html
 
-# Crear backup de configuración existente si existe
+# Backup de configuración existente
 if [ -f "$NGINX_CONF_PATH" ]; then
-    echo "📋 Creando backup de configuración existente..."
+    echo "📋 Creando backup de la configuración de Nginx existente..."
     sudo cp "$NGINX_CONF_PATH" "$NGINX_CONF_PATH.backup.$(date +%Y%m%d_%H%M%S)"
 fi
 
-# Paso 1: Usar configuración temporal sin SSL
-echo "📝 Copiando configuración temporal de Nginx (sin SSL)..."
-sudo cp "$PROJECT_NGINX_CONF" "$NGINX_CONF_PATH"
+# Copiar configuración temporal para la validación de SSL
+echo "🔄 Copiando configuración temporal de Nginx..."
+sudo cp "$GENERATED_TEMP_CONF" "$NGINX_CONF_PATH"
 
-# Verificar configuración temporal de Nginx
-echo "🔍 Verificando configuración temporal de Nginx..."
+# Habilitar el sitio y deshabilitar el sitio por defecto
+sudo ln -sf "$NGINX_CONF_PATH" "$NGINX_ENABLED_PATH"
+[ -L "/etc/nginx/sites-enabled/default" ] && sudo rm -f "/etc/nginx/sites-enabled/default"
+
+# Verificar y recargar Nginx
 if sudo nginx -t; then
-    echo "✅ Configuración temporal de Nginx válida"
+    sudo systemctl reload nginx
+    echo "✅ Nginx recargado con configuración temporal."
 else
-    echo "❌ Error en la configuración temporal de Nginx"
+    echo "❌ Error en la configuración temporal de Nginx."
+    sudo cat "$NGINX_CONF_PATH" # Muestra la configuración generada para depuración
     exit 1
 fi
 
-# Habilitar sitio si no está habilitado
-if [ ! -L "$NGINX_ENABLED_PATH" ]; then
-    echo "🔗 Habilitando sitio en Nginx..."
-    sudo ln -sf "$NGINX_CONF_PATH" "$NGINX_ENABLED_PATH"
-fi
-
-# Deshabilitar sitio por defecto si existe
-if [ -L "/etc/nginx/sites-enabled/default" ]; then
-    echo "🚫 Deshabilitando sitio por defecto..."
-    sudo rm -f "/etc/nginx/sites-enabled/default"
-fi
-
-# Recargar Nginx con configuración temporal
-echo "🔄 Recargando Nginx con configuración temporal..."
-sudo systemctl reload nginx
-
-# Paso 2: Obtener certificado SSL
-echo "🔒 Configurando SSL con Certbot para $DOMAIN..."
-
-# Verificar si ya existe certificado SSL
+# 5. Obtención o renovación de certificado SSL
 if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-    echo "🔒 Certificado SSL ya existe para $DOMAIN"
-    echo "🔄 Renovando certificado si es necesario..."
+    echo "🔄 Certificado SSL ya existe. Renovando si es necesario..."
     sudo certbot renew --quiet
 else
-    echo "🔒 Obteniendo certificado SSL para $DOMAIN..."
-    
-    # Obtener certificado SSL con Certbot usando webroot
+    echo "🔒 Obteniendo nuevo certificado SSL para $DOMAIN..."
     sudo certbot certonly \
         --webroot \
         --webroot-path=/var/www/html \
         -d "$DOMAIN" \
         --non-interactive \
         --agree-tos \
-        --email admin@autosystemprojects.site
-    
-    if [ $? -eq 0 ]; then
-        echo "✅ Certificado SSL obtenido exitosamente"
-    else
-        echo "❌ Error al obtener certificado SSL"
-        exit 1
-    fi
+        --email "$EMAIL"
 fi
 
-# Paso 3: Aplicar configuración completa con SSL
-echo "📝 Aplicando configuración completa con SSL..."
-sudo cp "$PROJECT_NGINX_CONF" "$NGINX_CONF_PATH"
+# 6. Aplicar configuración final con SSL
+echo "✨ Aplicando configuración final de Nginx con SSL..."
+sudo cp "$GENERATED_CONF" "$NGINX_CONF_PATH"
 
-# Verificar configuración final de Nginx
-echo "🔍 Verificando configuración final de Nginx..."
+# Verificar y recargar Nginx por última vez
 if sudo nginx -t; then
-    echo "✅ Configuración final de Nginx válida"
+    sudo systemctl reload nginx
+    echo "✅ Nginx recargado con configuración SSL."
 else
-    echo "❌ Error en la configuración final de Nginx"
+    echo "❌ Error en la configuración final de Nginx."
+    sudo cat "$NGINX_CONF_PATH" # Muestra la configuración generada para depuración
     exit 1
 fi
 
-# Recargar Nginx con configuración SSL
-echo "🔄 Recargando Nginx con configuración SSL..."
-sudo systemctl reload nginx
-
-# Verificar que el servicio esté funcionando
-echo "🔍 Verificando configuración final..."
-if sudo nginx -t && sudo systemctl is-active --quiet nginx; then
-    echo "✅ Nginx configurado correctamente"
-    echo "🌐 El sitio debería estar disponible en: https://$DOMAIN"
-else
-    echo "❌ Error en la configuración final"
-    exit 1
-fi
-
-# Configurar renovación automática de SSL
+# 7. Configurar renovación automática de SSL
 echo "⏰ Configurando renovación automática de SSL..."
-(sudo crontab -l 2>/dev/null; echo "0 12 * * * /usr/bin/certbot renew --quiet") | sudo crontab -
+(sudo crontab -l 2>/dev/null | grep -v "certbot renew" || true; echo "0 12 * * * /usr/bin/certbot renew --quiet") | sudo crontab -
 
-echo "🎉 ¡Configuración completada exitosamente!"
-echo "📋 Resumen:"
+# 8. Resumen final
+echo "🎉 ¡Configuración de Nginx completada exitosamente!"
 echo "   - Dominio: https://$DOMAIN"
-echo "   - Puerto interno: 8022"
-echo "   - Configuración: $NGINX_CONF_PATH"
-echo "   - SSL: Habilitado con renovación automática"
+echo "   - Puerto interno de N8N: $PORT"
+echo "   - Email de Let's Encrypt: $EMAIL"
 echo "   - Logs: /var/log/nginx/n8n_*.log"
+
+# 9. Limpieza de archivos temporales
+echo "🧹 Limpiando archivos de configuración generados..."
+rm -f "$GENERATED_TEMP_CONF"
+rm -f "$GENERATED_CONF"
+echo "✅ Limpieza completada."

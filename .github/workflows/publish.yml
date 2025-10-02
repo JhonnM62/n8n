@@ -1,361 +1,94 @@
-name: Deploy N8N Workflow Automation
+name: Publish Docker image
 
 on:
   push:
-    branches: ["main", "develop"]
-  workflow_dispatch:
-    inputs:
-      port:
-        description: 'Puerto para el contenedor (default: 8022)'
-        required: false
-        default: '8022'
-      domain:
-        description: 'Dominio personalizado (default: n8n.autosystemprojects.site)'
-        required: false
-        default: 'n8n.autosystemprojects.site'
-
-permissions:
-  contents: read
-  packages: write
-
-env:
-  DEFAULT_PORT: 8022
-  DEFAULT_DOMAIN: n8n.autosystemprojects.site
+    branches:
+      - main
 
 jobs:
-  create-docker-image:
-    runs-on: ubuntu-latest
-    outputs:
-      repo_name_lower: ${{ steps.repo_name_step.outputs.name }}
-      github_actor_lower: ${{ steps.repo_name_step.outputs.actor_lower }}
-      deployment_port: ${{ steps.config_step.outputs.port }}
-      deployment_domain: ${{ steps.config_step.outputs.domain }}
-      image_tag: ${{ steps.config_step.outputs.image_tag }}
-    steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
-
-      # Configurar parámetros de despliegue
-      - name: Configurar parámetros de despliegue
-        id: config_step
-        run: |
-          # Usar inputs del workflow_dispatch o valores por defecto
-          PORT="${{ github.event.inputs.port || env.DEFAULT_PORT }}"
-          DOMAIN="${{ github.event.inputs.domain || env.DEFAULT_DOMAIN }}"
-          
-          echo "port=$PORT" >> $GITHUB_OUTPUT
-          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
-          
-          # Crear tag único basado en puerto y timestamp
-          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          IMAGE_TAG="n8n-port-${PORT}-${TIMESTAMP}"
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-          
-          echo "Deployment configuration:"
-          echo "Port: $PORT"
-          echo "Domain: $DOMAIN"
-          echo "Image Tag: $IMAGE_TAG"
-
-      # Convertir nombres a minúsculas
-      - name: Set names to lowercase
-        id: repo_name_step
-        run: |
-          REPO_NAME="${{ github.event.repository.name }}"
-          REPO_LOWER=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]//g')
-          ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
-
-          echo "name=$REPO_LOWER" >> $GITHUB_OUTPUT
-          echo "actor_lower=$ACTOR_LOWER" >> $GITHUB_OUTPUT
-
-          echo "Repository name: $REPO_LOWER"
-          echo "GitHub actor: $ACTOR_LOWER"
-
-      # Login a GitHub Container Registry
-      - name: Login a GitHub Container Registry
-        run: |
-          ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
-          echo '${{ secrets.TOKEN_N8N }}' | docker login ghcr.io -u ${ACTOR_LOWER} --password-stdin
-
-      # Construir y subir imagen Docker
-      - name: Construir y subir imagen Docker de N8N
-        run: |
-          ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
-          REPO_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_FULL_TAG="ghcr.io/${ACTOR_LOWER}/${REPO_LOWER}:${{ steps.config_step.outputs.image_tag }}"
-          IMAGE_LATEST_TAG="ghcr.io/${ACTOR_LOWER}/${REPO_LOWER}:latest"
-          
-          echo "Building N8N image with tags:"
-          echo "- Specific: $IMAGE_FULL_TAG"
-          echo "- Latest: $IMAGE_LATEST_TAG"
-
-          # Construir imagen con Node.js 22
-          docker build . \
-            --tag $IMAGE_FULL_TAG \
-            --tag $IMAGE_LATEST_TAG \
-            --build-arg NODE_VERSION=22
-
-          # Subir ambas tags
-          docker push $IMAGE_FULL_TAG
-          docker push $IMAGE_LATEST_TAG
-
-          echo "✅ Imágenes Docker subidas exitosamente"
-
   deploy:
-    needs: create-docker-image
+    name: Deploy
     runs-on: ubuntu-latest
-    
+
+    env:
+      N8N_DOMAIN: "nochon.autosystemprojects.site" # <-- Cambia tu dominio aquí
+      N8N_PORT: "8023" # <-- Cambia tu puerto aquí
+      LETSENCRYPT_EMAIL: "admin_1@autosystemprojects.site" # <-- Cambia tu email aquí
+
     steps:
-      - name: Checkout código
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configurar parámetros de despliegue
-        id: deploy_config
-        run: |
-          PORT="${{ github.event.inputs.port || '8022' }}"
-          DOMAIN="${{ github.event.inputs.domain || 'n8n.autosystemprojects.site' }}"
-          
-          # Generar nombres únicos para contenedor
-          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          CONTAINER_NAME="n8n_${PORT}_${TIMESTAMP}"
-          
-          echo "port=$PORT" >> $GITHUB_OUTPUT
-          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
-          echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
-          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
-          
-          echo "Configuración de despliegue:"
-          echo "Puerto: $PORT"
-          echo "Dominio: $DOMAIN"
-          echo "Contenedor: $CONTAINER_NAME"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Convertir nombres a minúsculas
-        id: repo_names
-        run: |
-          REPO_NAME="${{ github.event.repository.name }}"
-          REPO_LOWER=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]//g')
-          ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
-          
-          echo "name=$REPO_LOWER" >> $GITHUB_OUTPUT
-          echo "actor_lower=$ACTOR_LOWER" >> $GITHUB_OUTPUT
-
-      - name: Extraer credenciales SSH
-        id: ssh_credentials
-        run: |
-          AUTH_SERVER="${{ secrets.AUTH_SERVER }}"
-          if [[ "$AUTH_SERVER" == *"@"* ]]; then
-            USERNAME=$(echo "$AUTH_SERVER" | cut -d'@' -f1)
-            HOST=$(echo "$AUTH_SERVER" | cut -d'@' -f2)
-          else
-            USERNAME="root"
-            HOST="$AUTH_SERVER"
-          fi
-          echo "username=$USERNAME" >> $GITHUB_OUTPUT
-          echo "host=$HOST" >> $GITHUB_OUTPUT
-
-      - name: Desplegar en servidor VPS
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          host: ${{ steps.ssh_credentials.outputs.host }}
-          username: ${{ steps.ssh_credentials.outputs.username }}
-          password: ${{ secrets.AUTH_PASS }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/n8n-custom
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            N8N_PORT=${{ env.N8N_PORT }}
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_KEY }}
           script: |
-            set -e
-            
-            # Variables de configuración
-            PORT="${{ steps.deploy_config.outputs.port }}"
-            DOMAIN="${{ steps.deploy_config.outputs.domain }}"
-            CONTAINER_NAME="${{ steps.deploy_config.outputs.container_name }}"
-            VOLUME_NAME="${{ steps.deploy_config.outputs.volume_name }}"
-            ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
-            REPO_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
-            IMAGE_URL="ghcr.io/${ACTOR_LOWER}/${REPO_LOWER}:latest"
-            
-            echo "🚀 Iniciando despliegue de N8N..."
-            echo "Puerto: $PORT"
-            echo "Dominio: $DOMAIN"
-            echo "Contenedor: $CONTAINER_NAME"
-            echo "Imagen: $IMAGE_URL"
-            
-            # Crear directorio del proyecto si no existe
-            PROJECT_DIR="/opt/n8n"
-            mkdir -p $PROJECT_DIR
-            cd $PROJECT_DIR
-            
-            # Copiar archivos necesarios del repositorio
-            echo "📁 Copiando archivos de configuración..."
-            
-            # Crear estructura de directorios
-            mkdir -p scripts nginx
-            
-            # Copiar script de configuración
-            cat > scripts/setup-nginx.sh << 'EOF'
-            #!/bin/bash
+            # Variables de entorno
+            export IMAGE_LATEST_TAG=${{ secrets.DOCKERHUB_USERNAME }}/n8n-custom:latest
+            export CONTAINER_NAME=n8n-custom
+            export DOMAIN=${{ env.N8N_DOMAIN }}
+            export PORT=${{ env.N8N_PORT }}
+            export EMAIL=${{ env.LETSENCRYPT_EMAIL }}
 
-            # Script para configurar Nginx y SSL para N8N
-            set -e
-
-            DOMAIN=${1:-"n8n.autosystemprojects.site"}
-            PORT=${2:-"8022"}
-            EMAIL="admin@autosystemprojects.site"
-
-            echo "🚀 Configurando Nginx para N8N en $DOMAIN..."
-
-            # Crear directorio para validación de Certbot
-            echo "📁 Creando directorio para validación de Certbot..."
-            sudo mkdir -p /var/www/html/.well-known/acme-challenge
-            sudo chown -R www-data:www-data /var/www/html
-
-            # Configuración temporal de Nginx para la validación de Certbot
-            echo "📝 Creando configuración temporal de Nginx para la validación de Certbot..."
-            cat > /etc/nginx/sites-available/n8n-temp << NGINX_TEMP
-            server {
-                listen 80;
-                server_name $DOMAIN www.$DOMAIN;
-
-                location /.well-known/acme-challenge/ {
-                    root /var/www/html;
-                    try_files \$uri \$uri/ =404;
-                }
-
-                location / {
-                    return 404; # Bloquear otro tráfico durante la validación
-                }
-            }
-            NGINX_TEMP
-
-            sudo ln -sf /etc/nginx/sites-available/n8n-temp /etc/nginx/sites-enabled/n8n-temp
-            sudo rm -f /etc/nginx/sites-enabled/default
-
-            # Probar y recargar Nginx
-            sudo nginx -t && sudo systemctl reload nginx
-
-            # Obtener o renovar certificado SSL
-            echo "🔐 Obteniendo certificado SSL para $DOMAIN..."
-            sudo certbot certonly --webroot -w /var/www/html -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos -m $EMAIL --keep-until-expiring --expand
-
-            # Eliminar configuración temporal
-            sudo rm -f /etc/nginx/sites-enabled/n8n-temp
-
-            # Configuración completa de Nginx con SSL
-            echo "📝 Creando configuración completa de Nginx con SSL..."
-            cat > /etc/nginx/sites-available/$DOMAIN << NGINX_FULL
-            server {
-                listen 80;
-                server_name $DOMAIN www.$DOMAIN;
-                return 301 https://\$host\$request_uri;
-            }
-
-            server {
-                listen 443 ssl http2;
-                server_name $DOMAIN www.$DOMAIN;
-
-                ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-                ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-                
-                include /etc/letsencrypt/options-ssl-nginx.conf;
-                ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-                location / {
-                    proxy_pass http://localhost:$PORT;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
-                    proxy_cache_bypass \$http_upgrade;
-                    proxy_read_timeout 86400;
-                }
-            }
-            NGINX_FULL
-
-            sudo ln -sf /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/$DOMAIN
-
-            # Probar y recargar Nginx
-            sudo nginx -t && sudo systemctl reload nginx
-
-            # Configurar renovación automática
-            echo "⏰ Configurando renovación automática de certificados..."
-            (sudo crontab -l 2>/dev/null | grep -v "certbot renew"; echo "0 12 * * * /usr/bin/certbot renew --quiet && /usr/bin/systemctl reload nginx") | sudo crontab -
-
-            echo "✅ Configuración de Nginx y SSL completada para $DOMAIN"
-            EOF
-            
-            # Configurar Nginx y SSL usando el script optimizado
-            echo "🔧 Configurando Nginx y SSL para $DOMAIN..."
-            chmod +x scripts/setup-nginx.sh
-            ./scripts/setup-nginx.sh "$DOMAIN" "$PORT"
-            
-            # Limpiar configuraciones antiguas de Nginx para evitar conflictos
-            echo "🧹 Limpiando configuraciones antiguas de Nginx..."
-            sudo rm -f /etc/nginx/sites-available/n8n
-            sudo rm -f /etc/nginx/sites-enabled/n8n
-            echo "✅ Configuraciones antiguas eliminadas."
-            
-            # Login en GitHub Container Registry
-            ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
-            echo '${{ secrets.TOKEN_N8N }}' | docker login ghcr.io -u ${ACTOR_LOWER} --password-stdin
-            
-            # Pull de la nueva imagen
-            docker pull $IMAGE_URL
-            
-            # Detener y eliminar contenedores n8n antiguos para este puerto
-            OLD_CONTAINERS=$(docker ps -a -q --filter "name=n8n_${PORT}")
-            if [ ! -z "$OLD_CONTAINERS" ]; then
-              echo "🛑 Deteniendo y eliminando contenedores antiguos en el puerto $PORT..."
-              docker stop $OLD_CONTAINERS || true
-              docker rm $OLD_CONTAINERS || true
-              echo "✅ Contenedores antiguos eliminados."
+            # Detener y eliminar el contenedor existente
+            if [ $(docker ps -a -q -f name=^/${CONTAINER_NAME}$) ]; then
+              docker stop $CONTAINER_NAME
+              docker rm $CONTAINER_NAME
             fi
-            
-            # Ejecutar nuevo contenedor
-            echo "🚀 Iniciando nuevo contenedor N8N...."
+
+            # Pull de la imagen más reciente
+            docker pull $IMAGE_LATEST_TAG
+
+            # Ejecutar el nuevo contenedor
             docker run -d \
               --name $CONTAINER_NAME \
-              --restart unless-stopped \
-              -p $PORT:8022 \
-              -e N8N_BASIC_AUTH_ACTIVE=true \
-              -e N8N_BASIC_AUTH_USER=${{ secrets.N8N_BASIC_AUTH_USER || 'admin' }} \
-              -e N8N_BASIC_AUTH_PASSWORD=${{ secrets.N8N_BASIC_AUTH_PASSWORD || 'adminjonnyca237' }} \
-              -e WEBHOOK_URL=https://$DOMAIN/ \
-              -e N8N_EDITOR_BASE_URL=https://$DOMAIN/ \
-              -e VUE_APP_URL_BASE_API=https://$DOMAIN/ \
-              -e N8N_HOST=n8n.autosystemprojects.site \
-              -e N8N_TRUST_PROXY=true \
-              -e N8N_PROTOCOL=https \
-              -e N8N_PORT=8022 \
-              -e GENERIC_TIMEZONE=America/Mexico_City \
-              -e DB_TYPE=sqlite \
-              -e N8N_USER_FOLDER=/home/n8n/.n8n \
-              -e DB_SQLITE_POOL_SIZE=10 \
-              -e N8N_SECURE_COOKIE=true \
-              -e N8N_ENCRYPTION_KEY=n8n-default-key-change-me \
-              -e N8N_LOG_LEVEL=info \
-              -e N8N_LOG_OUTPUT=file \
-              -e N8N_LOG_FILE_LOCATION=/app/logs/ \
-              -e N8N_RUNNERS_ENABLED=true \
-              --health-cmd="curl -f http://localhost:8022/healthz || exit 1" \
-              --health-interval=30s \
-              --health-timeout=10s \
+              --restart always \
+              -p $PORT:$PORT \
+              -e N8N_HOST="$DOMAIN" \
+              -e N8N_PORT="$PORT" \
+              -e VUE_APP_URL_BASE_API="https://"$DOMAIN \
+              --health-cmd="curl -f http://localhost:$PORT/healthz || exit 1" \
+              --health-interval=1m \
+              --health-timeout=30s \
               --health-retries=3 \
-              $IMAGE_URL
-            
-            # Verificar que el contenedor esté corriendo
-            sleep 10
-            if docker ps | grep -q $CONTAINER_NAME; then
-              echo "✅ Contenedor $CONTAINER_NAME iniciado exitosamente"
-              echo "🌐 N8N disponible en: https://$DOMAIN"
-              echo "📊 Puerto interno: $PORT"
-              echo "💾 Volumen de datos: $VOLUME_NAME"
-              
-              # Mostrar logs iniciales
-              echo "📋 Logs iniciales del contenedor:"
-              docker logs --tail 20 $CONTAINER_NAME
-            else
-              echo "❌ Error: El contenedor no pudo iniciarse"
-              docker logs $CONTAINER_NAME
-              exit 1
-            fi
-            
-            echo "🎉 Despliegue de N8N completado exitosamente!"
+              $IMAGE_LATEST_TAG
+
+            # Configurar Nginx
+            bash ~/n8n/scripts/setup-nginx.sh
+
+            # Limpiar imágenes de Docker antiguas
+            docker image prune -a -f
+
+            echo "🚀 Despliegue completado en https://$DOMAIN"

@@ -1,22 +1,22 @@
 server { 
      listen 80; 
-     server_name n8n.autosystemprojects.site www.n8n.autosystemprojects.site; 
-     return 301 https://n8n.autosystemprojects.site$request_uri; 
+     server_name __DOMAIN__ www.__DOMAIN__; 
+     return 301 https://__DOMAIN__$request_uri; 
  } 
  
  server { 
      listen 443 ssl http2; 
-     server_name www.n8n.autosystemprojects.site; 
-     return 301 https://n8n.autosystemprojects.site$request_uri; 
+     server_name www.__DOMAIN__; 
+     return 301 https://__DOMAIN__$request_uri; 
  } 
  
  server { 
      listen 443 ssl http2; 
-     server_name n8n.autosystemprojects.site; 
+     server_name __DOMAIN__; 
  
      # SSL Configuration 
-     ssl_certificate /etc/letsencrypt/live/n8n.autosystemprojects.site/fullchain.pem; 
-     ssl_certificate_key /etc/letsencrypt/live/n8n.autosystemprojects.site/privkey.pem; 
+     ssl_certificate /etc/letsencrypt/live/__DOMAIN__/fullchain.pem; 
+     ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem; 
      
      # Modern SSL Configuration 
      ssl_protocols TLSv1.2 TLSv1.3; 
@@ -32,7 +32,7 @@ server {
      add_header Referrer-Policy strict-origin-when-cross-origin always; 
  
      location / { 
-         proxy_pass http://localhost:8022; 
+         proxy_pass http://localhost:__PORT__; 
          proxy_http_version 1.1; 
          proxy_set_header Upgrade $http_upgrade; 
          proxy_set_header Connection 'upgrade'; 

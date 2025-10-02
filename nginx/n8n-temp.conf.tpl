@@ -1,12 +1,12 @@
 # Configuración temporal de Nginx para N8N (sin SSL)
-# Dominio: n8n.autosystemprojects.site
-# Puerto interno: 8022
+# Dominio: __DOMAIN__
+# Puerto interno: __PORT__
 
 # Configuración HTTP temporal para validación de Certbot
 server {
     listen 80;
     listen [::]:80;
-    server_name n8n.autosystemprojects.site;
+    server_name __DOMAIN__;
 
     # Configuración de logs
     access_log /var/log/nginx/n8n_access.log;
@@ -20,7 +20,7 @@ server {
 
     # Configuración de proxy para N8N
     location / {
-        proxy_pass http://localhost:8022;
+        proxy_pass http://localhost:__PORT__;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -46,7 +46,7 @@ server {
 
     # Configuración específica para webhooks de N8N
     location /webhook/ {
-        proxy_pass http://localhost:8022/webhook/;
+        proxy_pass http://localhost:__PORT__/webhook/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -65,7 +65,7 @@ server {
 
     # Configuración para archivos estáticos
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        proxy_pass http://localhost:8022;
+        proxy_pass http://localhost:__PORT__;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -78,7 +78,7 @@ server {
 
     # Configuración para health check
     location /healthz {
-        proxy_pass http://localhost:8022/healthz;
+        proxy_pass http://localhost:__PORT__/healthz;
         proxy_set_header Host $host;
         access_log off;
     }

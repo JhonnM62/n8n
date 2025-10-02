@@ -2,6 +2,9 @@
 # Usamos la imagen de Node.js 22 con Alpine para optimización
 FROM node:22-alpine
 
+# Argumento para el puerto, con un valor por defecto
+ARG N8N_PORT=8022
+
 # Información del mantenedor
 LABEL maintainer="AutoSystemProjects"
 LABEL description="N8N Workflow Automation - Simplified"
@@ -30,13 +33,8 @@ RUN npm install --only=production && \
 # Copiamos todo el código fuente de la aplicación
 COPY . .
 
-
 # Exponemos el puerto configurado
-EXPOSE 8022
-
-# Healthcheck para verificar que n8n esté funcionando
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8022/healthz || exit 1
+EXPOSE $N8N_PORT
 
 # Comando para iniciar n8n. No se usa entrypoint.
 CMD [ "npm", "start" ]
