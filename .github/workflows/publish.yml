@@ -190,104 +190,26 @@ jobs:
             echo "📁 Copiando archivos de configuración..."
             
             # Crear estructura de directorios
-            mkdir -p scripts nginx
+            mkdir -p scripts nginx templates
             
-            # Copiar script de configuración
-            cat > scripts/setup-nginx.sh << 'EOF'
-            #!/bin/bash
-
-            # Script para configurar Nginx y SSL para N8N
-            set -e
-
-            DOMAIN=${1:-"n8n.autosystemprojects.site"}
-            PORT=${2:-"8022"}
-            EMAIL="${{ env.LETSENCRYPT_EMAIL }}"
-
-            echo "🚀 Configurando Nginx para N8N en $DOMAIN..."
-
-            # Crear directorio para validación de Certbot
-            echo "📁 Creando directorio para validación de Certbot..."
-            sudo mkdir -p /var/www/html/.well-known/acme-challenge
-            sudo chown -R www-data:www-data /var/www/html
-
-            # Configuración temporal de Nginx para la validación de Certbot
-            echo "📝 Creando configuración temporal de Nginx para la validación de Certbot..."
-            cat > /etc/nginx/sites-available/n8n-temp << NGINX_TEMP
-            server {
-                listen 80;
-                server_name $DOMAIN www.$DOMAIN;
-
-                location /.well-known/acme-challenge/ {
-                    root /var/www/html;
-                    try_files \$uri \$uri/ =404;
-                }
-
-                location / {
-                    return 404; # Bloquear otro tráfico durante la validación
-                }
-            }
-            NGINX_TEMP
-
-            sudo ln -sf /etc/nginx/sites-available/n8n-temp /etc/nginx/sites-enabled/n8n-temp
-            sudo rm -f /etc/nginx/sites-enabled/default
-
-            # Probar y recargar Nginx
-            sudo nginx -t && sudo systemctl reload nginx
-
-            # Obtener o renovar certificado SSL
-            echo "🔐 Obteniendo certificado SSL para $DOMAIN..."
-            sudo certbot certonly --webroot -w /var/www/html -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos -m $EMAIL --keep-until-expiring --expand
-
-            # Eliminar configuración temporal
-            sudo rm -f /etc/nginx/sites-enabled/n8n-temp
-
-            # Configuración completa de Nginx con SSL
-            echo "📝 Creando configuración completa de Nginx con SSL..."
-            cat > /etc/nginx/sites-available/$DOMAIN << NGINX_FULL
-            server {
-                listen 80;
-                server_name $DOMAIN www.$DOMAIN;
-                return 301 https://\$host\$request_uri;
-            }
-
-            server {
-                listen 443 ssl http2;
-                server_name $DOMAIN www.$DOMAIN;
-
-                ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-                ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-                
-                include /etc/letsencrypt/options-ssl-nginx.conf;
-                ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-                location / {
-                    proxy_pass http://localhost:$PORT;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
-                    proxy_cache_bypass \$http_upgrade;
-                    proxy_read_timeout 86400;
-                }
-            }
-            NGINX_FULL
-
-            sudo ln -sf /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/$DOMAIN
-
-            # Probar y recargar Nginx
-            sudo nginx -t && sudo systemctl reload nginx
-
-            # Configurar renovación automática
-            echo "⏰ Configurando renovación automática de certificados..."
-            (sudo crontab -l 2>/dev/null | grep -v "certbot renew"; echo "0 12 * * * /usr/bin/certbot renew --quiet && /usr/bin/systemctl reload nginx") | sudo crontab -
-
-            echo "✅ Configuración de Nginx y SSL completada para $DOMAIN"
-            EOF
+            # Copiar script de configuración desde el repositorio
+            curl -H "Authorization: token ${{ secrets.TOKEN_N8N }}" \
+                 -H "Accept: application/vnd.github.v3.raw" \
+                 -o scripts/setup-nginx.sh \
+                 "https://api.github.com/repos/${{ github.repository }}/contents/scripts/setup-nginx.sh?ref=${{ github.sha }}"
             
-            # Configurar Nginx y SSL usando el script optimizado
+            # Copiar plantillas de configuración desde el repositorio
+            curl -H "Authorization: token ${{ secrets.TOKEN_N8N }}" \
+                 -H "Accept: application/vnd.github.v3.raw" \
+                 -o templates/n8n.conf.tpl \
+                 "https://api.github.com/repos/${{ github.repository }}/contents/templates/n8n.conf.tpl?ref=${{ github.sha }}"
+            
+            curl -H "Authorization: token ${{ secrets.TOKEN_N8N }}" \
+                 -H "Accept: application/vnd.github.v3.raw" \
+                 -o templates/n8n-temp.conf.tpl \
+                 "https://api.github.com/repos/${{ github.repository }}/contents/templates/n8n-temp.conf.tpl?ref=${{ github.sha }}"
+            
+            # Configurar Nginx y SSL usando el script original
             echo "🔧 Configurando Nginx y SSL para $DOMAIN..."
             export DOMAIN="$DOMAIN"
             export PORT="$PORT"

@@ -7,16 +7,26 @@
 
 set -e
 
-# 1. Configuración de variables
-# Usar variables de entorno si están definidas, de lo contrario, usar valores por defecto.
-DOMAIN="${DOMAIN:-n8n.autosystemprojects.site}"
-PORT="${PORT:-8022}"
-EMAIL="${EMAIL:-admin@autosystemprojects.site}" # Email para notificaciones de Let's Encrypt
+# 1. Configuración de variables (requeridas)
+if [ -z "$DOMAIN" ]; then
+    echo "❌ Error: La variable DOMAIN es requerida"
+    exit 1
+fi
+
+if [ -z "$PORT" ]; then
+    echo "❌ Error: La variable PORT es requerida"
+    exit 1
+fi
+
+if [ -z "$EMAIL" ]; then
+    echo "❌ Error: La variable EMAIL es requerida"
+    exit 1
+fi
 
 NGINX_CONF_PATH="/etc/nginx/sites-available/n8n"
 NGINX_ENABLED_PATH="/etc/nginx/sites-enabled/n8n"
-PROJECT_NGINX_TEMP_CONF_TPL="./nginx/n8n-temp.conf.tpl"
-PROJECT_NGINX_CONF_TPL="./nginx/n8n.conf.tpl"
+PROJECT_NGINX_TEMP_CONF_TPL="./templates/n8n-temp.conf.tpl"
+PROJECT_NGINX_CONF_TPL="./templates/n8n.conf.tpl"
 GENERATED_TEMP_CONF="./nginx/n8n-temp.conf"
 GENERATED_CONF="./nginx/n8n.conf"
 
@@ -113,4 +123,10 @@ echo "   - Logs: /var/log/nginx/n8n_*.log"
 echo "🧹 Limpiando archivos de configuración generados..."
 rm -f "$GENERATED_TEMP_CONF"
 rm -f "$GENERATED_CONF"
+
+# Limpiar archivos temporales de Nginx en /etc/nginx/sites-available/
+echo "🧹 Limpiando archivos temporales de Nginx..."
+sudo rm -f /etc/nginx/sites-available/n8n-temp
+sudo rm -f /etc/nginx/sites-enabled/n8n-temp
+
 echo "✅ Limpieza completada."
