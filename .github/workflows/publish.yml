@@ -281,7 +281,8 @@ jobs:
 
             # Paso 2: Obtener certificados SSL
             echo "🔐 Obteniendo certificados SSL con Certbot..."
-            sudo certbot certonly --webroot --webroot-path=/var/www/html -d $DOMAIN --non-interactive --agree-tos --email admin@autosystemprojects.site
+            # Usar el dominio principal para la validación ya que el DNS redirige las solicitudes
+            sudo certbot certonly --webroot --webroot-path=/var/www/html -d autosystemprojects.site -d www.autosystemprojects.site -d $DOMAIN --non-interactive --agree-tos --email admin@autosystemprojects.site
 
             # Paso 3: Aplicar configuración completa con SSL
             echo "🔒 Aplicando configuración completa de Nginx (con SSL)..."
