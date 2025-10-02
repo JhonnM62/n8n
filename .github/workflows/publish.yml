@@ -1,27 +1,22 @@
-name: Deploy N8N Automation Platform
+name: Deploy N8N Workflow Automation
 
 on:
   push:
-    branches: ["main", "master", "develop"]
+    branches: ["main", "develop"]
   workflow_dispatch:
     inputs:
+      port:
+        description: 'Puerto para el contenedor (default: 8022)'
+        required: false
+        default: '8022'
       domain:
-        description: 'Dominio para el despliegue'
+        description: 'Dominio personalizado (default: n8n.autosystemprojects.site)'
         required: false
         default: 'n8n.autosystemprojects.site'
-      port:
-        description: 'Puerto interno del contenedor'
-        required: false
-        default: '5678'
-      external_port:
-        description: 'Puerto externo del servidor'
-        required: false
-        default: '8017'
 
 env:
-  DOMAIN: ${{ github.event.inputs.domain || 'n8n.autosystemprojects.site' }}
-  INTERNAL_PORT: ${{ github.event.inputs.port || '5678' }}
-  EXTERNAL_PORT: ${{ github.event.inputs.external_port || '8017' }}
+  DEFAULT_PORT: 8022
+  DEFAULT_DOMAIN: n8n.autosystemprojects.site
 
 jobs:
   create-docker-image:
@@ -29,13 +24,35 @@ jobs:
     outputs:
       repo_name_lower: ${{ steps.repo_name_step.outputs.name }}
       github_actor_lower: ${{ steps.repo_name_step.outputs.actor_lower }}
-      domain: ${{ env.DOMAIN }}
-      internal_port: ${{ env.INTERNAL_PORT }}
-      external_port: ${{ env.EXTERNAL_PORT }}
+      deployment_port: ${{ steps.config_step.outputs.port }}
+      deployment_domain: ${{ steps.config_step.outputs.domain }}
+      image_tag: ${{ steps.config_step.outputs.image_tag }}
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
 
+      # Configurar parámetros de despliegue
+      - name: Configurar parámetros de despliegue
+        id: config_step
+        run: |
+          # Usar inputs del workflow_dispatch o valores por defecto
+          PORT="${{ github.event.inputs.port || env.DEFAULT_PORT }}"
+          DOMAIN="${{ github.event.inputs.domain || env.DEFAULT_DOMAIN }}"
+          
+          echo "port=$PORT" >> $GITHUB_OUTPUT
+          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
+          
+          # Crear tag único basado en puerto y timestamp
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          IMAGE_TAG="n8n-port-${PORT}-${TIMESTAMP}"
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          
+          echo "Deployment configuration:"
+          echo "Port: $PORT"
+          echo "Domain: $DOMAIN"
+          echo "Image Tag: $IMAGE_TAG"
+
+      # Convertir nombres a minúsculas
       - name: Set names to lowercase
         id: repo_name_step
         run: |
@@ -46,226 +63,375 @@ jobs:
           echo "name=$REPO_LOWER" >> $GITHUB_OUTPUT
           echo "actor_lower=$ACTOR_LOWER" >> $GITHUB_OUTPUT
 
-          echo "Repository name converted to: $REPO_LOWER"
-          echo "GitHub actor converted to: $ACTOR_LOWER"
+          echo "Repository name: $REPO_LOWER"
+          echo "GitHub actor: $ACTOR_LOWER"
 
       - name: Login en GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ steps.repo_name_step.outputs.actor_lower }}
-          password: ${{ secrets.TOKEN_N8N }}
+          password: ${{ secrets.AUTH_PASS }}
 
-      - name: Generar archivo .env
+      # Generar archivo .env desde secrets
+      - name: Generar archivo .env para N8N
         run: |
           echo '${{ secrets.ENV_FILE_CONTENT }}' > .env
-          echo "✅ .env file generated from ENV_FILE_CONTENT secret"
+          
+          # Agregar configuraciones específicas del despliegue
+          echo "" >> .env
+          echo "# Configuración de despliegue automático" >> .env
+          echo "N8N_PORT=${{ steps.config_step.outputs.port }}" >> .env
+          echo "WEBHOOK_URL=https://${{ steps.config_step.outputs.domain }}/" >> .env
+          echo "N8N_EDITOR_BASE_URL=https://${{ steps.config_step.outputs.domain }}/" >> .env
+          
+          echo "✅ Archivo .env generado con configuración de despliegue"
 
-      - name: Construir y subir la imagen de Docker
+      # Construir y subir imagen Docker
+      - name: Construir y subir imagen Docker de N8N
         run: |
-          IMAGE_TAG="ghcr.io/${{ steps.repo_name_step.outputs.actor_lower }}/${{ steps.repo_name_step.outputs.name }}:latest"
-          echo "Building N8N image with tag: $IMAGE_TAG"
+          IMAGE_FULL_TAG="ghcr.io/${{ steps.repo_name_step.outputs.actor_lower }}/${{ steps.repo_name_step.outputs.name }}:${{ steps.config_step.outputs.image_tag }}"
+          IMAGE_LATEST_TAG="ghcr.io/${{ steps.repo_name_step.outputs.actor_lower }}/${{ steps.repo_name_step.outputs.name }}:latest"
+          
+          echo "Building N8N image with tags:"
+          echo "- Specific: $IMAGE_FULL_TAG"
+          echo "- Latest: $IMAGE_LATEST_TAG"
 
-          docker build . --tag $IMAGE_TAG
-          docker push $IMAGE_TAG
+          # Construir imagen con Node.js 22
+          docker build . \
+            --tag $IMAGE_FULL_TAG \
+            --tag $IMAGE_LATEST_TAG \
+            --build-arg NODE_VERSION=22
 
-          echo "N8N Image successfully pushed: $IMAGE_TAG"
+          # Subir ambas tags
+          docker push $IMAGE_FULL_TAG
+          docker push $IMAGE_LATEST_TAG
+
+          echo "✅ Imágenes Docker subidas exitosamente"
+
+          echo "✅ Imágenes Docker subidas exitosamente"
 
   deploy:
-    runs-on: ubuntu-latest
     needs: create-docker-image
+    runs-on: ubuntu-latest
+    
     steps:
-      - name: Instalar sshpass
-        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Checkout código
+        uses: actions/checkout@v4
 
-      - name: Conectar vía SSH y desplegar N8N
-        env:
-          REPO_NAME: ${{ needs.create-docker-image.outputs.repo_name_lower }}
-          GITHUB_ACTOR_LOWER: ${{ needs.create-docker-image.outputs.github_actor_lower }}
-          DOMAIN: ${{ needs.create-docker-image.outputs.domain }}
-          INTERNAL_PORT: ${{ needs.create-docker-image.outputs.internal_port }}
-          EXTERNAL_PORT: ${{ needs.create-docker-image.outputs.external_port }}
+      - name: Configurar parámetros de despliegue
+        id: deploy_config
         run: |
-          sshpass -p ${{ secrets.AUTH_PASS }} ssh -o StrictHostKeyChecking=no ${{ secrets.AUTH_SERVER }} << 'EOF'
-            # Variables del deployment
-            export REPO_NAME=${{ needs.create-docker-image.outputs.repo_name_lower }}
-            export GITHUB_ACTOR_LOWER=${{ needs.create-docker-image.outputs.github_actor_lower }}
-            export IMAGE_URL="ghcr.io/$GITHUB_ACTOR_LOWER/$REPO_NAME:latest"
-            export DOMAIN=${{ needs.create-docker-image.outputs.domain }}
-            export INTERNAL_PORT=${{ needs.create-docker-image.outputs.internal_port }}
-            export EXTERNAL_PORT=${{ needs.create-docker-image.outputs.external_port }}
+          PORT="${{ github.event.inputs.port || '8022' }}"
+          DOMAIN="${{ github.event.inputs.domain || 'n8n.autosystemprojects.site' }}"
+          
+          # Generar nombres únicos para contenedor y volumen
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          CONTAINER_NAME="n8n_${PORT}_${TIMESTAMP}"
+          VOLUME_NAME="n8n_data_${PORT}"
+          
+          echo "port=$PORT" >> $GITHUB_OUTPUT
+          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
+          echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
+          echo "volume_name=$VOLUME_NAME" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          
+          echo "Configuración de despliegue:"
+          echo "Puerto: $PORT"
+          echo "Dominio: $DOMAIN"
+          echo "Contenedor: $CONTAINER_NAME"
+          echo "Volumen: $VOLUME_NAME"
 
-            echo "Deploying N8N with the following configuration:"
-            echo "Repository: $REPO_NAME"
-            echo "Actor: $GITHUB_ACTOR_LOWER"  
-            echo "Image URL: $IMAGE_URL"
-            echo "Domain: $DOMAIN"
-            echo "Internal Port: $INTERNAL_PORT"
-            echo "External Port: $EXTERNAL_PORT"
+      - name: Convertir nombres a minúsculas
+        id: repo_names
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          REPO_LOWER=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]//g')
+          ACTOR_LOWER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
+          
+          echo "name=$REPO_LOWER" >> $GITHUB_OUTPUT
+          echo "actor_lower=$ACTOR_LOWER" >> $GITHUB_OUTPUT
 
-            # Crear directorio del proyecto
-            PROJECT_DIR="~/proyectos/$REPO_NAME"
-            mkdir -p $PROJECT_DIR/data $PROJECT_DIR/logs
+      - name: Desplegar en servidor VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AUTH_SERVER }}
+          username: root
+          password: ${{ secrets.AUTH_PASS }}
+          script: |
+            set -e
             
-            # Crear archivo .env para el contenedor
-            cat > ${PROJECT_DIR}/.env << ENVEOF
-# Configuración del servidor N8N
-N8N_HOST=0.0.0.0
-N8N_PORT=${INTERNAL_PORT}
-N8N_PROTOCOL=https
-N8N_SECURE_COOKIE=true
-
-# Base de datos
-DB_TYPE=sqlite
-N8N_DATABASE_SQLITE_DATABASE=/app/data/database.sqlite
-
-# Logs
-N8N_LOG_LEVEL=info
-N8N_LOG_OUTPUT=file
-N8N_LOG_FILE_LOCATION=/app/logs/n8n.log
-
-# Configuración de dominio
-WEBHOOK_URL=https://${DOMAIN}
-N8N_EDITOR_BASE_URL=https://${DOMAIN}
-
-# Configuración adicional
-N8N_METRICS=true
-N8N_DIAGNOSTICS_ENABLED=false
-ENVEOF
-
-            # Login al registry
-            echo ${{ secrets.TOKEN_N8N }} | docker login ghcr.io -u "$GITHUB_ACTOR_LOWER" --password-stdin
+            # Variables de configuración
+            PORT="${{ steps.deploy_config.outputs.port }}"
+            DOMAIN="${{ steps.deploy_config.outputs.domain }}"
+            CONTAINER_NAME="${{ steps.deploy_config.outputs.container_name }}"
+            VOLUME_NAME="${{ steps.deploy_config.outputs.volume_name }}"
+            IMAGE_URL="ghcr.io/${{ steps.repo_names.outputs.actor_lower }}/${{ steps.repo_names.outputs.name }}:latest"
             
-            # Hacer pull de la imagen
-            echo "Pulling N8N image: $IMAGE_URL"
+            echo "🚀 Iniciando despliegue de N8N..."
+            echo "Puerto: $PORT"
+            echo "Dominio: $DOMAIN"
+            echo "Contenedor: $CONTAINER_NAME"
+            echo "Imagen: $IMAGE_URL"
+            
+            # Crear directorio del proyecto si no existe
+            PROJECT_DIR="/opt/n8n"
+            mkdir -p $PROJECT_DIR
+            cd $PROJECT_DIR
+            
+            # Configurar Nginx si no existe la configuración para este dominio
+            NGINX_CONFIG="/etc/nginx/sites-available/$DOMAIN"
+            if [ ! -f "$NGINX_CONFIG" ]; then
+              echo "📝 Configurando Nginx para $DOMAIN..."
+              
+              # Crear configuración de Nginx
+              cat > $NGINX_CONFIG << 'EOF'
+            server {
+                listen 80;
+                server_name $DOMAIN www.$DOMAIN;
+                
+                # Redirección HTTP a HTTPS
+                return 301 https://$server_name$request_uri;
+            }
+            
+            server {
+                listen 443 ssl http2;
+                server_name $DOMAIN www.$DOMAIN;
+                
+                # Configuración SSL (se configurará con Certbot)
+                ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+                include /etc/letsencrypt/options-ssl-nginx.conf;
+                ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+                
+                # Headers de seguridad
+                add_header X-Frame-Options "SAMEORIGIN" always;
+                add_header X-XSS-Protection "1; mode=block" always;
+                add_header X-Content-Type-Options "nosniff" always;
+                add_header Referrer-Policy "no-referrer-when-downgrade" always;
+                add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+                
+                # Logs
+                access_log /var/log/nginx/$DOMAIN.access.log;
+                error_log /var/log/nginx/$DOMAIN.error.log;
+                
+                # Configuración principal para N8N
+                location / {
+                    proxy_pass http://localhost:$PORT;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                    proxy_cache_bypass $http_upgrade;
+                    
+                    # Timeouts
+                    proxy_connect_timeout 60s;
+                    proxy_send_timeout 60s;
+                    proxy_read_timeout 60s;
+                }
+                
+                # WebSocket support para N8N
+                location /socket.io/ {
+                    proxy_pass http://localhost:$PORT;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection "upgrade";
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                }
+                
+                # Webhooks de N8N
+                location /webhook/ {
+                    proxy_pass http://localhost:$PORT;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                    
+                    # Permitir cuerpos de request más grandes para webhooks
+                    client_max_body_size 50M;
+                }
+                
+                # Health check
+                location /health {
+                    proxy_pass http://localhost:$PORT/healthz;
+                    proxy_set_header Host $host;
+                }
+                
+                # Límites
+                client_max_body_size 100M;
+            }
+            EOF
+              
+              # Reemplazar variable en el archivo
+              sed -i "s/\$DOMAIN/$DOMAIN/g" $NGINX_CONFIG
+              sed -i "s/\$PORT/$PORT/g" $NGINX_CONFIG
+              
+              # Habilitar sitio
+              ln -sf $NGINX_CONFIG /etc/nginx/sites-enabled/
+              
+              # Verificar configuración de Nginx
+              nginx -t
+              
+              # Recargar Nginx
+              systemctl reload nginx
+              
+              echo "✅ Nginx configurado para $DOMAIN"
+            else
+              echo "ℹ️ Configuración de Nginx ya existe para $DOMAIN"
+            fi
+            
+            # Configurar SSL con Certbot si no existe
+            if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+              echo "🔒 Configurando SSL con Certbot para $DOMAIN..."
+              
+              # Obtener certificado SSL
+              certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email admin@autosystemprojects.site
+              
+              # Configurar renovación automática si no existe
+              if ! crontab -l | grep -q "certbot renew"; then
+                (crontab -l 2>/dev/null; echo "0 12 * * * /usr/bin/certbot renew --quiet") | crontab -
+                echo "✅ Renovación automática de SSL configurada"
+              fi
+              
+              echo "✅ SSL configurado para $DOMAIN"
+            else
+              echo "ℹ️ Certificado SSL ya existe para $DOMAIN"
+            fi
+            
+            # Crear archivo .env
+            echo '${{ secrets.ENV_FILE_CONTENT }}' > .env
+            
+            # Agregar configuraciones específicas del despliegue
+            echo "" >> .env
+            echo "# Configuración de despliegue automático" >> .env
+            echo "N8N_PORT=$PORT" >> .env
+            echo "WEBHOOK_URL=https://$DOMAIN/" >> .env
+            echo "N8N_EDITOR_BASE_URL=https://$DOMAIN/" >> .env
+            echo "N8N_HOST=0.0.0.0" >> .env
+            echo "N8N_PROTOCOL=https" >> .env
+            echo "N8N_SECURE_COOKIE=true" >> .env
+            
+            echo "✅ Archivo .env configurado"
+            
+            # Login en GitHub Container Registry
+            echo '${{ secrets.AUTH_PASS }}' | docker login ghcr.io -u ${{ steps.repo_names.outputs.actor_lower }} --password-stdin
+            
+            # Pull de la nueva imagen
             docker pull $IMAGE_URL
             
-            # Detener y eliminar contenedor anterior si existe
-            CONTAINER_NAME="$REPO_NAME-n8n"
-            echo "Stopping existing container if running..."
-            docker stop $CONTAINER_NAME 2>/dev/null || true
-            docker rm $CONTAINER_NAME 2>/dev/null || true
+            # Crear volumen Docker si no existe
+            if ! docker volume ls | grep -q "$VOLUME_NAME"; then
+              docker volume create $VOLUME_NAME
+              echo "✅ Volumen Docker creado: $VOLUME_NAME"
+            else
+              echo "ℹ️ Volumen Docker ya existe: $VOLUME_NAME"
+            fi
             
-            # Crear volúmenes Docker si no existen
-            echo "Creating Docker volumes..."
-            docker volume create ${REPO_NAME}_data 2>/dev/null || true
-            docker volume create ${REPO_NAME}_logs 2>/dev/null || true
+            # Detener contenedores anteriores en el mismo puerto (si existen)
+            EXISTING_CONTAINERS=$(docker ps -q --filter "publish=$PORT")
+            if [ ! -z "$EXISTING_CONTAINERS" ]; then
+              echo "🛑 Deteniendo contenedores existentes en puerto $PORT..."
+              docker stop $EXISTING_CONTAINERS
+              docker rm $EXISTING_CONTAINERS
+              echo "✅ Contenedores anteriores removidos"
+            fi
             
-            # Ejecutar nuevo contenedor N8N
-            echo "Starting new N8N container: $CONTAINER_NAME on port $EXTERNAL_PORT"
+            # Ejecutar nuevo contenedor
+            echo "🚀 Iniciando nuevo contenedor N8N..."
             docker run -d \
               --name $CONTAINER_NAME \
-              -p $EXTERNAL_PORT:$INTERNAL_PORT \
-              --restart always \
-              --env-file ${PROJECT_DIR}/.env \
-              -v ${REPO_NAME}_data:/app/data \
-              -v ${REPO_NAME}_logs:/app/logs \
-              --health-cmd="curl -f http://localhost:$INTERNAL_PORT/healthz || exit 1" \
+              --restart unless-stopped \
+              -p $PORT:8001 \
+              --env-file .env \
+              -v $VOLUME_NAME:/home/node/.n8n \
+              -v $PROJECT_DIR/.env:/app/.env:ro \
+              --health-cmd="curl -f http://localhost:8001/healthz || exit 1" \
               --health-interval=30s \
               --health-timeout=10s \
               --health-retries=3 \
               $IMAGE_URL
-              
-            # Verificar que el contenedor esté corriendo
-            echo "Waiting for container to start..."
-            sleep 20
             
-            # Verificar estado del contenedor
+            # Verificar que el contenedor esté corriendo
+            sleep 10
             if docker ps | grep -q $CONTAINER_NAME; then
-                echo "✅ N8N container deployed successfully!"
-                docker ps | grep $CONTAINER_NAME
-                
-                # Mostrar logs iniciales
-                echo "Container logs:"
-                docker logs $CONTAINER_NAME --tail 20
-                
-                # Configurar NGINX para el dominio
-                echo "Configuring NGINX for domain: $DOMAIN"
-                
-                # Crear configuración de NGINX
-                sudo tee /etc/nginx/sites-available/$DOMAIN > /dev/null << NGINXEOF
-            server {
-                listen 80;
-                server_name $DOMAIN;
-                
-                # Redirigir HTTP a HTTPS
-                return 301 https://\$server_name\$request_uri;
-            }
-
-            server {
-                listen 443 ssl http2;
-                server_name $DOMAIN;
-                
-                # Configuración SSL (se configurará con certbot)
-                ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-                ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-                
-                # Configuraciones SSL seguras
-                ssl_protocols TLSv1.2 TLSv1.3;
-                ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384;
-                ssl_prefer_server_ciphers off;
-                ssl_session_cache shared:SSL:10m;
-                ssl_session_timeout 10m;
-                
-                # Headers de seguridad
-                add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-                add_header X-Frame-Options DENY always;
-                add_header X-Content-Type-Options nosniff always;
-                add_header X-XSS-Protection "1; mode=block" always;
-                
-                # Configuración del proxy para N8N
-                location / {
-                    proxy_pass http://localhost:$EXTERNAL_PORT;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
-                    proxy_cache_bypass \$http_upgrade;
-                    proxy_read_timeout 86400;
-                }
-                
-                # Configuración específica para WebSockets de N8N
-                location /rest/push {
-                    proxy_pass http://localhost:$EXTERNAL_PORT;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection "upgrade";
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
-                }
-            }
-            NGINXEOF
-                
-                # Habilitar el sitio
-                sudo ln -sf /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/
-                
-                # Verificar configuración de NGINX
-                sudo nginx -t
-                
-                # Generar certificado SSL con certbot
-                echo "Generating SSL certificate for $DOMAIN"
-                sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@autosystemprojects.site --redirect
-                
-                # Recargar NGINX
-                sudo systemctl reload nginx
-                
-                echo "✅ NGINX configured and SSL certificate generated for $DOMAIN"
-                
-                # Verificar que el servicio responda
-                echo "Checking N8N service health..."
-                curl -f http://localhost:$EXTERNAL_PORT || echo "Warning: N8N service might need more time to start"
-                
-                echo "🚀 N8N deployment completed successfully!"
-                echo "Access your N8N instance at: https://$DOMAIN"
-                
+              echo "✅ Contenedor $CONTAINER_NAME iniciado exitosamente"
+              echo "🌐 N8N disponible en: https://$DOMAIN"
+              echo "📊 Puerto interno: $PORT"
+              echo "💾 Volumen de datos: $VOLUME_NAME"
+              
+              # Mostrar logs iniciales
+              echo "📋 Logs iniciales del contenedor:"
+              docker logs --tail 20 $CONTAINER_NAME
             else
-                echo "❌ N8N Container failed to start"
-                docker logs $CONTAINER_NAME
-                exit 1
+              echo "❌ Error: El contenedor no pudo iniciarse"
+              docker logs $CONTAINER_NAME
+              exit 1
             fi
-          EOF
+            
+            echo "🎉 Despliegue de N8N completado exitosamente!"
+        runs-on: ubuntu-latest
+        needs: create-docker-image
+        steps:
+            - name: Instalar sshpass
+              run: sudo apt-get update && sudo apt-get install -y sshpass
+
+            - name: Conectar vía SSH y desplegar
+              env:
+                  ENV_CONTENT: ${{ secrets.ENV_FILE_CONTENT }}
+                  REPO_NAME: ${{ needs.create-docker-image.outputs.repo_name_lower }}
+                  GITHUB_ACTOR_LOWER: ${{ needs.create-docker-image.outputs.github_actor_lower }}
+              run: |
+                  sshpass -p ${{ secrets.AUTH_PASS }} ssh -o StrictHostKeyChecking=no ${{ secrets.AUTH_SERVER }} << 'EOF'
+                    # Variables del deployment
+                    export REPO_NAME=${{ needs.create-docker-image.outputs.repo_name_lower }}
+                    export GITHUB_ACTOR_LOWER=${{ needs.create-docker-image.outputs.github_actor_lower }}
+                    export IMAGE_URL="ghcr.io/$GITHUB_ACTOR_LOWER/$REPO_NAME:latest"
+
+                    echo "Deploying with the following configuration:"
+                    echo "Repository: $REPO_NAME"
+                    echo "Actor: $GITHUB_ACTOR_LOWER"  
+                    echo "Image URL: $IMAGE_URL"
+
+                    # Crear directorio del proyecto
+                    PROJECT_DIR="~/proyectos/$REPO_NAME"
+                    mkdir -p $PROJECT_DIR
+                    echo '${{ secrets.ENV_FILE_CONTENT }}' > ${PROJECT_DIR}/.env
+
+                    # Login al registry con usuario en minúsculas
+                    echo ${{ secrets.TOKEN_EXAMPLE }} | docker login ghcr.io -u "$GITHUB_ACTOR_LOWER" --password-stdin
+                    
+                    # Hacer pull de la imagen
+                    echo "Pulling image: $IMAGE_URL"
+                    docker pull $IMAGE_URL
+                    
+                    # Detener y eliminar contenedor anterior si existe
+                    CONTAINER_NAME="$REPO_NAME-container"
+                    docker stop $CONTAINER_NAME 2>/dev/null || true
+                    docker rm $CONTAINER_NAME 2>/dev/null || true
+                    
+                    # Ejecutar nuevo contenedor
+                    echo "Starting new container: $CONTAINER_NAME"
+                    docker run -d \
+                      --name $CONTAINER_NAME \
+                      -p 8015:8001 \
+                      --restart always \
+                      --env-file ${PROJECT_DIR}/.env \
+                      $IMAGE_URL
+                      
+                    # Verificar que el contenedor esté corriendo
+                    sleep 5
+                    if docker ps | grep -q $CONTAINER_NAME; then
+                        echo "✅ Container deployed successfully!"
+                        docker ps | grep $CONTAINER_NAME
+                    else
+                        echo "❌ Container failed to start"
+                        docker logs $CONTAINER_NAME
+                        exit 1
+                    fi
+                  EOF

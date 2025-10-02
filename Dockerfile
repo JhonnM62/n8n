@@ -1,6 +1,10 @@
 # ========== DOCKERFILE PARA N8N ==========
-# Imagen base de Node.js 20 con Alpine para optimización
-FROM node:20-alpine
+# Usamos la imagen oficial de Node.js 22 (más actual) con Alpine para optimización
+FROM node:22-alpine
+
+# Información del mantenedor
+LABEL maintainer="AutoSystemProjects"
+LABEL description="N8N Workflow Automation - Production Ready"
 
 # Establecer directorio de trabajo
 WORKDIR /app
@@ -10,48 +14,68 @@ RUN apk add --no-cache \
     python3 \
     make \
     g++ \
-    cairo-dev \
-    jpeg-dev \
-    pango-dev \
-    giflib-dev \
-    librsvg-dev \
-    pixman-dev
+    git \
+    curl \
+    sqlite \
+    && rm -rf /var/cache/apk/*
 
 # Crear usuario no-root para seguridad
-RUN addgroup -g 1001 -S n8nuser && \
-    adduser -S n8nuser -u 1001 -G n8nuser
+RUN addgroup -g 1001 -S n8n && \
+    adduser -S n8n -u 1001 -G n8n
 
 # Copiar archivos de dependencias
 COPY package.json package-lock.json ./
 
-# Instalar dependencias de n8n
+# Instalar dependencias de producción
 RUN npm ci --only=production && \
     npm cache clean --force
 
-# Copiar código fuente de la aplicación
+# Copiar el código fuente de la aplicación
 COPY . .
 
 # Crear directorios necesarios para n8n
 RUN mkdir -p /app/data /app/logs && \
-    chown -R n8nuser:n8nuser /app
+    chown -R n8n:n8n /app
 
-# Cambiar al usuario no-root
-USER n8nuser
-
-# Variables de entorno por defecto
+# Variables de entorno para n8n
 ENV NODE_ENV=production
+ENV N8N_PORT=8022
 ENV N8N_HOST=0.0.0.0
-ENV N8N_PORT=5678
 ENV N8N_PROTOCOL=http
+ENV WEBHOOK_URL=https://www.n8n.autosystemprojects.site/
+ENV N8N_EDITOR_BASE_URL=https://www.n8n.autosystemprojects.site/
+ENV GENERIC_TIMEZONE=America/Mexico_City
+ENV TZ=America/Mexico_City
+
+# Configuración de base de datos SQLite
 ENV DB_TYPE=sqlite
 ENV DB_SQLITE_DATABASE=/app/data/n8n.db
-ENV N8N_USER_FOLDER=/app/data
+ENV DB_SQLITE_POOL_SIZE=10
+
+# Configuración de seguridad
+ENV N8N_SECURE_COOKIE=true
+ENV N8N_ENCRYPTION_KEY=n8n-default-key-change-me
+
+# Configuración de logs
 ENV N8N_LOG_LEVEL=info
 ENV N8N_LOG_OUTPUT=file
-ENV N8N_LOG_FILE_LOCATION=/app/logs
+ENV N8N_LOG_FILE_LOCATION=/app/logs/
 
-# Exponer puerto de n8n
-EXPOSE 5678
+# Configuración de runners (nueva versión)
+ENV N8N_RUNNERS_ENABLED=true
 
-# Comando de inicio
+# Cambiar al usuario no-root
+USER n8n
+
+# Exponer el puerto configurado
+EXPOSE 8022
+
+# Crear volúmenes para persistencia de datos
+VOLUME ["/app/data", "/app/logs"]
+
+# Healthcheck para verificar que n8n esté funcionando
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8022/healthz || exit 1
+
+# Comando para iniciar n8n
 CMD ["npm", "start"]
