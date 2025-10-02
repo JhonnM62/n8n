@@ -7,7 +7,7 @@ LABEL maintainer="AutoSystemProjects"
 LABEL description="N8N Workflow Automation - Production Ready"
 
 # Establecer directorio de trabajo
-WORKDIR /app
+WORKDIR /home/n8n
 
 # Instalar dependencias del sistema necesarias para n8n
 RUN apk add --no-cache \
@@ -27,20 +27,18 @@ RUN addgroup -g 1001 -S n8n && \
 # Copiar archivos de dependencias
 COPY package.json package-lock.json ./
 
-# Copiar el código fuente de la aplicación
-COPY . .
-
-# Instalar dependencias de producción
+# Instalar dependencias de producción, luego copiar el código fuente para optimizar la caché
 RUN npm install --only=production && \
     npm cache clean --force
+COPY . .
 
 # Copiar el script de punto de entrada y hacerlo ejecutable
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Crear directorios necesarios para n8n
-RUN mkdir -p /app/data /app/logs && \
-    chown -R n8n:n8n /app
+RUN mkdir -p /home/n8n/.n8n /home/n8n/logs && \
+    chown -R n8n:n8n /home/n8n
 
 # Variables de entorno para n8n
 ENV NODE_ENV=production
@@ -65,7 +63,7 @@ ENV N8N_ENCRYPTION_KEY=n8n-default-key-change-me
 # Configuración de logs
 ENV N8N_LOG_LEVEL=info
 ENV N8N_LOG_OUTPUT=file
-ENV N8N_LOG_FILE_LOCATION=/app/logs/
+ENV N8N_LOG_FILE_LOCATION=/home/n8n/logs/
 
 # Configuración de runners (nueva versión)
 ENV N8N_RUNNERS_ENABLED=true
@@ -77,7 +75,7 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 EXPOSE 8022
 
 # Crear volúmenes para persistencia de datos
-VOLUME ["/app/data", "/app/logs"]
+VOLUME ["/home/n8n/.n8n", "/home/n8n/logs"]
 
 # Healthcheck para verificar que n8n esté funcionando
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
