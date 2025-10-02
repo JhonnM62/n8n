@@ -361,7 +361,7 @@ jobs:
               --restart unless-stopped \
               -p $PORT:8022 \
               --env-file .env \
-              -v $VOLUME_NAME:/home/node/.n8n \
+              -v $VOLUME_NAME:/home/n8n/.n8n \
               --health-cmd="curl -f http://localhost:8022/healthz || exit 1" \
               --health-interval=30s \
               --health-timeout=10s \

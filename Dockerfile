@@ -49,7 +49,8 @@ ENV TZ=America/Mexico_City
 
 # Configuración de base de datos SQLite
 ENV DB_TYPE=sqlite
-ENV DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
+ENV N8N_USER_FOLDER=/home/n8n/.n8n
+ENV DB_SQLITE_DATABASE=/home/n8n/.n8n/database.sqlite
 ENV DB_SQLITE_POOL_SIZE=10
 
 # Configuración de seguridad
