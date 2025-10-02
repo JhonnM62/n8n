@@ -105,9 +105,9 @@ jobs:
     needs: create-docker-image
     runs-on: ubuntu-latest
     env:
-      N8N_DOMAIN: "nochon.autosystemprojects.site"
-      N8N_PORT: "8023"
-      LETSENCRYPT_EMAIL: "admin_1@autosystemprojects.site"
+      N8N_DOMAIN: "nochon_1.autosystemprojects.site"
+      N8N_PORT: "8024"
+      LETSENCRYPT_EMAIL: "admin_2@autosystemprojects.site"
     
     steps:
       - name: Checkout código
