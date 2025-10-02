@@ -359,11 +359,10 @@ jobs:
             docker run -d \
               --name $CONTAINER_NAME \
               --restart unless-stopped \
-              -p $PORT:8001 \
+              -p $PORT:8022 \
               --env-file .env \
               -v $VOLUME_NAME:/home/node/.n8n \
-              -v $PROJECT_DIR/.env:/app/.env:ro \
-              --health-cmd="curl -f http://localhost:8001/healthz || exit 1" \
+              --health-cmd="curl -f http://localhost:8022/healthz || exit 1" \
               --health-interval=30s \
               --health-timeout=10s \
               --health-retries=3 \
