@@ -27,7 +27,7 @@ RUN addgroup -g 1001 -S n8n && \
 COPY package.json package-lock.json ./
 
 # Instalar dependencias de producción
-RUN npm ci --only=production && \
+RUN npm install --only=production && \
     npm cache clean --force
 
 # Copiar el código fuente de la aplicación
@@ -49,8 +49,8 @@ ENV TZ=America/Mexico_City
 
 # Configuración de base de datos SQLite
 ENV DB_TYPE=sqlite
-ENV N8N_USER_FOLDER=/home/n8n/.n8n
-ENV DB_SQLITE_DATABASE=/home/n8n/.n8n/database.sqlite
+
+ENV N8N_USER_FOLDER=/home/n8n
 ENV DB_SQLITE_POOL_SIZE=10
 
 # Configuración de seguridad

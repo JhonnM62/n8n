@@ -48,7 +48,7 @@ fi
 
 # Paso 1: Usar configuración temporal sin SSL
 echo "📝 Copiando configuración temporal de Nginx (sin SSL)..."
-sudo cp "$PROJECT_NGINX_TEMP_CONF" "$NGINX_CONF_PATH"
+sudo cp "$PROJECT_NGINX_CONF" "$NGINX_CONF_PATH"
 
 # Verificar configuración temporal de Nginx
 echo "🔍 Verificando configuración temporal de Nginx..."
@@ -91,7 +91,6 @@ else
         --webroot \
         --webroot-path=/var/www/html \
         -d "$DOMAIN" \
-        -d "www.$DOMAIN" \
         --non-interactive \
         --agree-tos \
         --email admin@autosystemprojects.site
