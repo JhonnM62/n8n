@@ -290,7 +290,10 @@ jobs:
             # Configurar Nginx y SSL usando el script optimizado
             echo "🔧 Configurando Nginx y SSL para $DOMAIN..."
             chmod +x scripts/setup-nginx.sh
-            DOMAIN="$DOMAIN" PORT="$PORT" ./scripts/setup-nginx.sh
+export DOMAIN="$DOMAIN"
+export PORT="$PORT"
+export EMAIL="${{ env.LETSENCRYPT_EMAIL }}"
+./scripts/setup-nginx.sh
             
             # Limpiar configuraciones antiguas de Nginx para evitar conflictos
             echo "🧹 Limpiando configuraciones antiguas de Nginx..."
