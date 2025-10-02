@@ -130,22 +130,19 @@ jobs:
           PORT="${{ github.event.inputs.port || '8022' }}"
           DOMAIN="${{ github.event.inputs.domain || 'n8n.autosystemprojects.site' }}"
           
-          # Generar nombres únicos para contenedor y volumen
+          # Generar nombres únicos para contenedor
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           CONTAINER_NAME="n8n_${PORT}_${TIMESTAMP}"
-          VOLUME_NAME="n8n_data_${PORT}"
           
           echo "port=$PORT" >> $GITHUB_OUTPUT
           echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
           echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
-          echo "volume_name=$VOLUME_NAME" >> $GITHUB_OUTPUT
           echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
           
           echo "Configuración de despliegue:"
           echo "Puerto: $PORT"
           echo "Dominio: $DOMAIN"
           echo "Contenedor: $CONTAINER_NAME"
-          echo "Volumen: $VOLUME_NAME"
 
       - name: Convertir nombres a minúsculas
         id: repo_names
@@ -306,10 +303,11 @@ jobs:
             chmod +x scripts/setup-nginx.sh
             ./scripts/setup-nginx.sh "$DOMAIN" "$PORT"
             
-            # Crear archivo .env
-            echo '***
-            ***
+            # Crear archivo .env a partir del secret
             echo '${{ secrets.ENV_FILE_CONTENT }}' > .env
+            
+            # Corregir la ruta de la base de datos para que coincida con la nueva estructura
+            sed -i 's|/home/n8n/.n8n/database.sqlite|/app/.n8n/database.sqlite|g' .env
             
             # Agregar configuraciones específicas del despliegue
             echo "" >> .env
@@ -330,14 +328,6 @@ jobs:
             # Pull de la nueva imagen
             docker pull $IMAGE_URL
             
-            # Crear volumen Docker si no existe
-            if ! docker volume ls | grep -q "$VOLUME_NAME"; then
-              docker volume create $VOLUME_NAME
-              echo "✅ Volumen Docker creado: $VOLUME_NAME"
-            else
-              echo "ℹ️ Volumen Docker ya existe: $VOLUME_NAME"
-            fi
-            
             # Detener y eliminar contenedores n8n antiguos para este puerto
             OLD_CONTAINERS=$(docker ps -a -q --filter "name=n8n_${PORT}")
             if [ ! -z "$OLD_CONTAINERS" ]; then
@@ -354,7 +344,6 @@ jobs:
               --restart unless-stopped \
               -p $PORT:8022 \
               --env-file .env \
-              -v $VOLUME_NAME:/home/n8n/.n8n \
               --health-cmd="curl -f http://localhost:8022/healthz || exit 1" \
               --health-interval=30s \
               --health-timeout=10s \
