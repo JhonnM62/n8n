@@ -106,15 +106,12 @@ jobs:
             # Crear directorio del proyecto
             PROJECT_DIR="~/proyectos/$REPO_NAME"
             mkdir -p $PROJECT_DIR/data $PROJECT_DIR/logs
-
-            # Crear directorio del proyecto si no existe
-            mkdir -p ${PROJECT_DIR}
             
             # Crear archivo .env para el contenedor
-            cat > ${PROJECT_DIR}/.env << 'ENVEOF'
+            cat > ${PROJECT_DIR}/.env << ENVEOF
 # Configuración del servidor N8N
 N8N_HOST=0.0.0.0
-N8N_PORT=$INTERNAL_PORT
+N8N_PORT=${INTERNAL_PORT}
 N8N_PROTOCOL=https
 N8N_SECURE_COOKIE=true
 
@@ -128,8 +125,8 @@ N8N_LOG_OUTPUT=file
 N8N_LOG_FILE_LOCATION=/app/logs/n8n.log
 
 # Configuración de dominio
-WEBHOOK_URL=https://$DOMAIN
-N8N_EDITOR_BASE_URL=https://$DOMAIN
+WEBHOOK_URL=https://${DOMAIN}
+N8N_EDITOR_BASE_URL=https://${DOMAIN}
 
 # Configuración adicional
 N8N_METRICS=true
