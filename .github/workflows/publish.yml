@@ -223,7 +223,7 @@ jobs:
             sudo mkdir -p /var/www/html
 
             # Configuración temporal de Nginx (sin SSL)
-            cat > /tmp/n8n-temp.conf << 'NGINX_TEMP'
+            cat > /tmp/n8n-temp.conf << NGINX_TEMP
             server {
                 listen 80;
                 server_name autosystemprojects.site www.autosystemprojects.site n8n.autosystemprojects.site;
@@ -231,30 +231,30 @@ jobs:
                 # Permitir validación de Certbot para todos los dominios
                 location /.well-known/acme-challenge/ {
                     root /var/www/html;
-                    try_files $uri $uri/ =404;
+                    try_files \$uri \$uri/ =404;
                     allow all;
                 }
                 
-                # Redirigir todo el tráfico restante a HTTPS después de la validación
+                # Redirigir todo el tráfico restante a la aplicación
                 location / {
                     proxy_pass http://localhost:$PORT;
                     proxy_http_version 1.1;
-                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Upgrade \$http_upgrade;
                     proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto $scheme;
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
                 }
             }
             NGINX_TEMP
 
             # Configuración completa de Nginx (con SSL)
-            cat > /tmp/n8n.conf << 'NGINX_FULL'
+            cat > /tmp/n8n.conf << NGINX_FULL
             server {
                 listen 80;
                 server_name autosystemprojects.site www.autosystemprojects.site n8n.autosystemprojects.site;
-                return 301 https://autosystemprojects.site$request_uri;
+                return 301 https://autosystemprojects.site\$request_uri;
             }
 
             server {
@@ -272,22 +272,29 @@ jobs:
                 location / {
                     proxy_pass http://localhost:$PORT;
                     proxy_http_version 1.1;
-                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Upgrade \$http_upgrade;
                     proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto $scheme;
-                    proxy_cache_bypass $http_upgrade;
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \$scheme;
+                    proxy_cache_bypass \$http_upgrade;
                     proxy_read_timeout 86400;
                 }
             }
             NGINX_FULL
 
-            # Paso 1: Aplicar configuración temporal
-            echo "📝 Aplicando configuración temporal de Nginx (sin SSL)..."
+            # Paso 1: Configurar permisos y aplicar configuración temporal
+            echo "📝 Configurando permisos y aplicando configuración temporal de Nginx..."
+            sudo chown -R www-data:www-data /var/www/html
+            sudo chmod -R 755 /var/www/html
             sudo cp /tmp/n8n-temp.conf /etc/nginx/sites-available/n8n
             sudo ln -sf /etc/nginx/sites-available/n8n /etc/nginx/sites-enabled/n8n
+            
+            # Remover configuración por defecto si existe
+            sudo rm -f /etc/nginx/sites-enabled/default
+            
+            # Probar y recargar configuración
             sudo nginx -t && sudo systemctl reload nginx
 
             # Paso 2: Obtener certificados SSL
