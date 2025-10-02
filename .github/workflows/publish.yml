@@ -303,8 +303,10 @@ jobs:
             chmod +x scripts/setup-nginx.sh
             ./scripts/setup-nginx.sh "$DOMAIN" "$PORT"
             
-            # Crear archivo .env a partir del secret
-            echo '${{ secrets.ENV_FILE_CONTENT }}' > .env
+            # Crear archivo .env a partir del secret de forma segura
+          cat << 'EOF' > .env
+${{ secrets.ENV_FILE_CONTENT }}
+EOF
             echo "✅ Archivo .env generado para producción"
             
             # Limpiar configuraciones antiguas de Nginx para evitar conflictos
