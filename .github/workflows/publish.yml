@@ -135,27 +135,6 @@ ENVEOF
 
             # Login al registry
             echo ${{ secrets.TOKEN_N8N }} | docker login ghcr.io -u "$GITHUB_ACTOR_LOWER" --password-stdin
-
-# Base de datos
-DB_TYPE=sqlite
-N8N_DATABASE_SQLITE_DATABASE=/app/data/database.sqlite
-
-# Logs
-N8N_LOG_LEVEL=info
-N8N_LOG_OUTPUT=file
-N8N_LOG_FILE_LOCATION=/app/logs/n8n.log
-
-# Configuración de dominio
-WEBHOOK_URL=https://$DOMAIN
-N8N_EDITOR_BASE_URL=https://$DOMAIN
-
-# Configuración adicional
-N8N_METRICS=true
-N8N_DIAGNOSTICS_ENABLED=false
-ENVEOF
-
-            # Login al registry
-            echo ${{ secrets.TOKEN_N8N }} | docker login ghcr.io -u "$GITHUB_ACTOR_LOWER" --password-stdin
             
             # Hacer pull de la imagen
             echo "Pulling N8N image: $IMAGE_URL"
