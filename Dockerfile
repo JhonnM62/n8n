@@ -17,6 +17,7 @@ RUN apk add --no-cache \
     git \
     curl \
     sqlite \
+    su-exec \
     && rm -rf /var/cache/apk/*
 
 # Crear usuario no-root para seguridad
@@ -32,6 +33,10 @@ RUN npm install --only=production && \
 
 # Copiar el código fuente de la aplicación
 COPY . .
+
+# Copiar el script de punto de entrada y hacerlo ejecutable
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Crear directorios necesarios para n8n
 RUN mkdir -p /app/data /app/logs && \
@@ -65,8 +70,8 @@ ENV N8N_LOG_FILE_LOCATION=/app/logs/
 # Configuración de runners (nueva versión)
 ENV N8N_RUNNERS_ENABLED=true
 
-# Cambiar al usuario no-root
-USER n8n
+# Establecer el punto de entrada
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Exponer el puerto configurado
 EXPOSE 8022
