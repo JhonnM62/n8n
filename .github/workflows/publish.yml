@@ -157,11 +157,25 @@ jobs:
           echo "name=$REPO_LOWER" >> $GITHUB_OUTPUT
           echo "actor_lower=$ACTOR_LOWER" >> $GITHUB_OUTPUT
 
+      - name: Extraer credenciales SSH
+        id: ssh_credentials
+        run: |
+          AUTH_SERVER="${{ secrets.AUTH_SERVER }}"
+          if [[ "$AUTH_SERVER" == *"@"* ]]; then
+            USERNAME=$(echo "$AUTH_SERVER" | cut -d'@' -f1)
+            HOST=$(echo "$AUTH_SERVER" | cut -d'@' -f2)
+          else
+            USERNAME="root"
+            HOST="$AUTH_SERVER"
+          fi
+          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+          echo "host=$HOST" >> $GITHUB_OUTPUT
+
       - name: Desplegar en servidor VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.AUTH_SERVER }}
-          username: root
+          host: ${{ steps.ssh_credentials.outputs.host }}
+          username: ${{ steps.ssh_credentials.outputs.username }}
           password: ${{ secrets.AUTH_PASS }}
           script: |
             set -e
