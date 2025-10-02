@@ -345,13 +345,13 @@ jobs:
               echo "ℹ️ Volumen Docker ya existe: $VOLUME_NAME"
             fi
             
-            # Detener contenedores anteriores en el mismo puerto (si existen)
-            EXISTING_CONTAINERS=$(docker ps -q --filter "publish=$PORT")
-            if [ ! -z "$EXISTING_CONTAINERS" ]; then
-              echo "🛑 Deteniendo contenedores existentes en puerto $PORT..."
-              docker stop $EXISTING_CONTAINERS
-              docker rm $EXISTING_CONTAINERS
-              echo "✅ Contenedores anteriores removidos"
+            # Detener y eliminar contenedores n8n antiguos para este puerto
+            OLD_CONTAINERS=$(docker ps -a -q --filter "name=n8n_${PORT}")
+            if [ ! -z "$OLD_CONTAINERS" ]; then
+              echo "🛑 Deteniendo y eliminando contenedores antiguos en el puerto $PORT..."
+              docker stop $OLD_CONTAINERS || true
+              docker rm $OLD_CONTAINERS || true
+              echo "✅ Contenedores antiguos eliminados."
             fi
             
             # Ejecutar nuevo contenedor
