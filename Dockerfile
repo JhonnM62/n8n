@@ -27,12 +27,12 @@ RUN addgroup -g 1001 -S n8n && \
 # Copiar archivos de dependencias
 COPY package.json package-lock.json ./
 
+# Copiar el código fuente de la aplicación
+COPY . .
+
 # Instalar dependencias de producción
 RUN npm install --only=production && \
     npm cache clean --force
-
-# Copiar el código fuente de la aplicación
-COPY . .
 
 # Copiar el script de punto de entrada y hacerlo ejecutable
 COPY docker-entrypoint.sh /usr/local/bin/
@@ -55,7 +55,7 @@ ENV TZ=America/Mexico_City
 # Configuración de base de datos SQLite
 ENV DB_TYPE=sqlite
 
-ENV N8N_USER_FOLDER=/home/n8n
+ENV N8N_USER_FOLDER=/home/n8n/.n8n
 ENV DB_SQLITE_POOL_SIZE=10
 
 # Configuración de seguridad

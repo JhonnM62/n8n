@@ -310,8 +310,7 @@ jobs:
             # Configurar Nginx y SSL usando el script optimizado
             echo "🔧 Configurando Nginx y SSL para $DOMAIN..."
             chmod +x scripts/setup-nginx.sh
-            # La siguiente línea es redundante y se elimina
-            # ./scripts/setup-nginx.sh "$DOMAIN" "$PORT"
+            ./scripts/setup-nginx.sh "$DOMAIN" "$PORT"
             
             # Crear archivo .env
             echo '***
