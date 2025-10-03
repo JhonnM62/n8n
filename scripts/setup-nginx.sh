@@ -23,12 +23,14 @@ if [ -z "$EMAIL" ]; then
     exit 1
 fi
 
-NGINX_CONF_PATH="/etc/nginx/sites-available/n8n"
-NGINX_ENABLED_PATH="/etc/nginx/sites-enabled/n8n"
+NGINX_CONF_PATH="/etc/nginx/sites-available/$DOMAIN"
+NGINX_ENABLED_PATH="/etc/nginx/sites-enabled/$DOMAIN"
+NGINX_TEMP_CONF_PATH="/etc/nginx/sites-available/$DOMAIN-temp"
+NGINX_TEMP_ENABLED_PATH="/etc/nginx/sites-enabled/$DOMAIN-temp"
 PROJECT_NGINX_TEMP_CONF_TPL="./templates/n8n-temp.conf.tpl"
 PROJECT_NGINX_CONF_TPL="./templates/n8n.conf.tpl"
-GENERATED_TEMP_CONF="./nginx/n8n-temp.conf"
-GENERATED_CONF="./nginx/n8n.conf"
+GENERATED_TEMP_CONF="./nginx/$DOMAIN-temp.conf"
+GENERATED_CONF="./nginx/$DOMAIN.conf"
 
 echo "🚀 Configurando Nginx para N8N en $DOMAIN en el puerto $PORT..."
 
@@ -63,10 +65,10 @@ fi
 
 # Copiar configuración temporal para la validación de SSL
 echo "🔄 Copiando configuración temporal de Nginx..."
-sudo cp "$GENERATED_TEMP_CONF" "$NGINX_CONF_PATH"
+sudo cp "$GENERATED_TEMP_CONF" "$NGINX_TEMP_CONF_PATH"
 
-# Habilitar el sitio y deshabilitar el sitio por defecto
-sudo ln -sf "$NGINX_CONF_PATH" "$NGINX_ENABLED_PATH"
+# Habilitar el sitio temporal y deshabilitar el sitio por defecto
+sudo ln -sf "$NGINX_TEMP_CONF_PATH" "$NGINX_TEMP_ENABLED_PATH"
 [ -L "/etc/nginx/sites-enabled/default" ] && sudo rm -f "/etc/nginx/sites-enabled/default"
 
 # Verificar y recargar Nginx
@@ -75,7 +77,7 @@ if sudo nginx -t; then
     echo "✅ Nginx recargado con configuración temporal."
 else
     echo "❌ Error en la configuración temporal de Nginx."
-    sudo cat "$NGINX_CONF_PATH" # Muestra la configuración generada para depuración
+    sudo cat "$NGINX_TEMP_CONF_PATH" # Muestra la configuración generada para depuración
     exit 1
 fi
 
@@ -98,6 +100,10 @@ fi
 echo "✨ Aplicando configuración final de Nginx con SSL..."
 sudo cp "$GENERATED_CONF" "$NGINX_CONF_PATH"
 
+# Remover configuración temporal y habilitar la final
+sudo rm -f "$NGINX_TEMP_ENABLED_PATH"
+sudo ln -sf "$NGINX_CONF_PATH" "$NGINX_ENABLED_PATH"
+
 # Verificar y recargar Nginx por última vez
 if sudo nginx -t; then
     sudo systemctl reload nginx
@@ -117,7 +123,7 @@ echo "🎉 ¡Configuración de Nginx completada exitosamente!"
 echo "   - Dominio: https://$DOMAIN"
 echo "   - Puerto interno de N8N: $PORT"
 echo "   - Email de Let's Encrypt: $EMAIL"
-echo "   - Logs: /var/log/nginx/n8n_*.log"
+echo "   - Logs: /var/log/nginx/${DOMAIN}_*.log"
 
 # 9. Limpieza de archivos temporales
 echo "🧹 Limpiando archivos de configuración generados..."
@@ -126,7 +132,7 @@ rm -f "$GENERATED_CONF"
 
 # Limpiar archivos temporales de Nginx en /etc/nginx/sites-available/
 echo "🧹 Limpiando archivos temporales de Nginx..."
-sudo rm -f /etc/nginx/sites-available/n8n-temp
-sudo rm -f /etc/nginx/sites-enabled/n8n-temp
+sudo rm -f "$NGINX_TEMP_CONF_PATH"
+sudo rm -f "$NGINX_TEMP_ENABLED_PATH"
 
 echo "✅ Limpieza completada."
